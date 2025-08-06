@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   CalendarDays, LogIn, LogOut, RefreshCw, CalendarPlus, 
   CalendarX, Edit2, Clock, MapPin, Loader2, CheckCircle,
-  Calendar, List, ChevronLeft, ChevronRight, Grid3x3
+  Calendar, List, ChevronLeft, ChevronRight, LayoutGrid
 } from 'lucide-react';
 import GoogleCalendarService from './GoogleCalendarService';
 
@@ -369,7 +369,7 @@ function CalendarView({ tasks, taskDescriptions, onCreateEventFromTask }) {
                 onClick={() => setViewMode('week')}
                 title="Wochenansicht"
               >
-                <Grid3x3 size={18} />
+                <LayoutGrid size={18} />
               </button>
               <button 
                 className={`view-btn ${viewMode === 'list' ? 'active' : ''}`}
