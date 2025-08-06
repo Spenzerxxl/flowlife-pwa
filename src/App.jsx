@@ -3,7 +3,8 @@ import {
   Mic, MicOff, Send, Loader2, Trash2, Plus, CheckCircle2, 
   Clock, Tag, AlertCircle, Mail, Phone, Calendar, 
   ChevronDown, ChevronUp, Sparkles, Target, X, Sun, Moon,
-  Edit2, Save, FileText, CalendarDays, Menu, Home
+  Edit2, Save, FileText, CalendarDays, Menu, Home, ListTodo,
+  ChevronRight
 } from 'lucide-react';
 import CalendarView from './CalendarView';
 
@@ -26,6 +27,7 @@ function App() {
   const [tasks, setTasks] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('alle');
   const [showTaskInput, setShowTaskInput] = useState(false);
+  const [showVoiceInput, setShowVoiceInput] = useState(false);
   const [manualTaskText, setManualTaskText] = useState('');
   const [selectedDeadline, setSelectedDeadline] = useState('');
   const [selectedTaskCategory, setSelectedTaskCategory] = useState('sonstiges');
@@ -37,7 +39,7 @@ function App() {
   const [taskNotes, setTaskNotes] = useState({});
   
   // View States
-  const [activeView, setActiveView] = useState('tasks');
+  const [activeView, setActiveView] = useState('dashboard');
   const [showSidebar, setShowSidebar] = useState(true);
 
   // Categories
@@ -84,6 +86,17 @@ function App() {
   useEffect(() => {
     localStorage.setItem('flowlife_notes', JSON.stringify(taskNotes));
   }, [taskNotes]);
+
+  // Get today's tasks
+  const getTodaysTasks = () => {
+    const today = new Date().toISOString().split('T')[0];
+    return tasks.filter(task => task.deadline === today && task.progress < 100);
+  };
+
+  // Get open tasks
+  const getOpenTasks = () => {
+    return tasks.filter(task => task.progress < 100);
+  };
 
   // AI-powered task parsing from transcript
   const parseTaskFromTranscript = (text) => {
@@ -156,7 +169,8 @@ function App() {
     const newTask = parseTaskFromTranscript(transcript);
     setTasks(prev => [newTask, ...prev]);
     setTranscript('');
-    setStatus('✅ Task erstellt: ' + newTask.title.slice(0, 30) + '...');
+    setStatus('✅ Aufgabe erstellt');
+    setShowVoiceInput(false);
     
     setTimeout(() => {
       setStatus('');
@@ -183,6 +197,7 @@ function App() {
     setSelectedDeadline('');
     setSelectedTaskCategory('sonstiges');
     setShowTaskInput(false);
+    setShowVoiceInput(false);
   };
 
   // Update task progress
@@ -371,6 +386,9 @@ function App() {
       : 'bg-gradient-to-br from-blue-500 via-purple-600 to-pink-500'
   };
 
+  const todaysTasks = getTodaysTasks();
+  const openTasks = getOpenTasks();
+
   return (
     <div className={`min-h-screen ${theme.bg} transition-colors duration-300`}>
       {/* Theme Toggle Button */}
@@ -388,11 +406,18 @@ function App() {
           
           <nav className="space-y-2">
             <button
+              onClick={() => setActiveView('dashboard')}
+              className={`w-full text-left px-4 py-2 rounded-lg ${activeView === 'dashboard' ? theme.bgTertiary : ''} ${theme.text} ${theme.hover} transition-colors flex items-center gap-2`}
+            >
+              <Home size={18} />
+              Dashboard
+            </button>
+            <button
               onClick={() => setActiveView('tasks')}
               className={`w-full text-left px-4 py-2 rounded-lg ${activeView === 'tasks' ? theme.bgTertiary : ''} ${theme.text} ${theme.hover} transition-colors flex items-center gap-2`}
             >
-              <Home size={18} />
-              Tasks
+              <ListTodo size={18} />
+              Aufgaben
             </button>
             <button
               onClick={() => setActiveView('calendar')}
@@ -417,69 +442,135 @@ function App() {
           </button>
           
           <h1 className={`text-2xl font-bold ${theme.text} flex-1`}>
-            {activeView === 'calendar' ? '📅 Kalender' : '📋 Meine Tasks'}
+            {activeView === 'calendar' ? '📅 Kalender' : activeView === 'tasks' ? '📋 Meine Aufgaben' : '🏠 Dashboard'}
           </h1>
           
           <span className={`${theme.textSecondary} text-sm`}>
-            {tasks.length} Tasks • {tasks.filter(t => t.progress === 100).length} erledigt
+            {openTasks.length} offen • {tasks.filter(t => t.progress === 100).length} erledigt
           </span>
         </div>
 
         {/* View Content */}
-        {activeView === 'calendar' ? (
-          <CalendarView 
-            tasks={tasks}
-            onTaskClick={openTaskModal}
-            isDarkMode={isDarkMode}
-          />
-        ) : (
+        {activeView === 'dashboard' ? (
+          // Dashboard View
           <div className="p-6 max-w-6xl mx-auto">
-            {/* Voice Input Section */}
+            {/* Quick Add Section */}
             <div className={`${theme.bgSecondary} rounded-xl shadow-lg p-6 mb-6`}>
-              <h2 className={`text-xl font-semibold ${theme.text} mb-4`}>🎤 Voice Input</h2>
+              <h2 className={`text-xl font-semibold ${theme.text} mb-4`}>➕ Schnelleintrag</h2>
               
-              {/* Transcript Box */}
-              <div className={`${theme.bgTertiary} rounded-lg p-4 mb-4 min-h-[100px] max-h-[150px] overflow-y-auto relative`}>
-                {transcript && (
+              {!showTaskInput && !showVoiceInput ? (
+                <div className="flex gap-4">
                   <button
-                    onClick={clearTranscript}
-                    className="absolute top-2 right-2 p-2 bg-red-500/50 hover:bg-red-500/70 rounded-lg text-white transition-colors"
+                    onClick={() => setShowVoiceInput(true)}
+                    className="flex-1 p-4 bg-blue-500 hover:bg-blue-600 text-white rounded-lg flex items-center justify-center gap-2 transition-colors"
                   >
-                    <Trash2 size={16} />
+                    <Mic size={20} />
+                    Spracheingabe
                   </button>
-                )}
-                <p className={`${theme.text} text-base pr-10 whitespace-pre-wrap`}>
-                  {transcript || <span className={theme.textSecondary}>Drücke das Mikrofon und sprich deinen Task...</span>}
-                </p>
-              </div>
-
-              {/* Control Buttons */}
-              <div className="flex justify-center gap-4 mb-4">
-                <button
-                  onClick={isRecording ? stopRecording : startRecording}
-                  disabled={isProcessing}
-                  className={`p-4 rounded-full transition-all transform ${
-                    isRecording 
-                      ? 'bg-red-500 hover:bg-red-600 animate-pulse scale-110' 
-                      : 'bg-blue-500 hover:bg-blue-600 hover:scale-105'
-                  } text-white shadow-lg disabled:opacity-50`}
-                >
-                  {isRecording ? <MicOff size={28} /> : <Mic size={28} />}
-                </button>
-
-                <button
-                  onClick={createTaskFromTranscript}
-                  disabled={isProcessing || !transcript.trim()}
-                  className="p-4 rounded-full bg-green-500 hover:bg-green-600 text-white shadow-lg transition-all transform hover:scale-105 disabled:opacity-50"
-                  title="Task erstellen"
-                >
-                  {isProcessing ? <Loader2 size={28} className="animate-spin" /> : <Plus size={28} />}
-                </button>
-              </div>
-
-              {/* Status */}
+                  <button
+                    onClick={() => setShowTaskInput(true)}
+                    className="flex-1 p-4 bg-green-500 hover:bg-green-600 text-white rounded-lg flex items-center justify-center gap-2 transition-colors"
+                  >
+                    <Plus size={20} />
+                    Text eingeben
+                  </button>
+                </div>
+              ) : showVoiceInput ? (
+                <div>
+                  {/* Voice Input */}
+                  <div className={`${theme.bgTertiary} rounded-lg p-4 mb-4 min-h-[100px] relative`}>
+                    {transcript && (
+                      <button
+                        onClick={clearTranscript}
+                        className="absolute top-2 right-2 p-2 bg-red-500/50 hover:bg-red-500/70 rounded-lg text-white transition-colors"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    )}
+                    <p className={`${theme.text} text-base pr-10`}>
+                      {transcript || <span className={theme.textSecondary}>Drücke das Mikrofon und sprich...</span>}
+                    </p>
+                  </div>
+                  
+                  <div className="flex gap-2">
+                    <button
+                      onClick={isRecording ? stopRecording : startRecording}
+                      disabled={isProcessing}
+                      className={`p-3 rounded-lg ${
+                        isRecording ? 'bg-red-500 hover:bg-red-600 animate-pulse' : 'bg-blue-500 hover:bg-blue-600'
+                      } text-white transition-colors disabled:opacity-50`}
+                    >
+                      {isRecording ? <MicOff size={20} /> : <Mic size={20} />}
+                    </button>
+                    <button
+                      onClick={createTaskFromTranscript}
+                      disabled={!transcript.trim()}
+                      className="flex-1 p-3 bg-green-500 hover:bg-green-600 text-white rounded-lg disabled:opacity-50"
+                    >
+                      Aufgabe erstellen
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowVoiceInput(false);
+                        clearTranscript();
+                      }}
+                      className={`p-3 ${theme.bgTertiary} ${theme.text} rounded-lg ${theme.hover}`}
+                    >
+                      Abbrechen
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  {/* Text Input */}
+                  <div className="flex gap-2 mb-2">
+                    <input
+                      type="text"
+                      value={manualTaskText}
+                      onChange={(e) => setManualTaskText(e.target.value)}
+                      placeholder="Aufgabe eingeben..."
+                      className={`flex-1 ${theme.bgTertiary} ${theme.text} rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500`}
+                      onKeyPress={(e) => e.key === 'Enter' && createManualTask()}
+                    />
+                    <select
+                      value={selectedTaskCategory}
+                      onChange={(e) => setSelectedTaskCategory(e.target.value)}
+                      className={`${theme.bgTertiary} ${theme.text} rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500`}
+                    >
+                      {categories.map(cat => (
+                        <option key={cat.id} value={cat.id}>{cat.label}</option>
+                      ))}
+                    </select>
+                    <input
+                      type="date"
+                      value={selectedDeadline}
+                      onChange={(e) => setSelectedDeadline(e.target.value)}
+                      className={`${theme.bgTertiary} ${theme.text} rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500`}
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={createManualTask}
+                      disabled={!manualTaskText.trim()}
+                      className="flex-1 p-3 bg-green-500 hover:bg-green-600 text-white rounded-lg disabled:opacity-50"
+                    >
+                      Aufgabe erstellen
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowTaskInput(false);
+                        setManualTaskText('');
+                      }}
+                      className={`p-3 ${theme.bgTertiary} ${theme.text} rounded-lg ${theme.hover}`}
+                    >
+                      Abbrechen
+                    </button>
+                  </div>
+                </div>
+              )}
+              
               {status && (
-                <div className="text-center">
+                <div className="mt-3">
                   <p className={`${theme.textSecondary} ${theme.bgTertiary} rounded-full px-4 py-2 inline-block text-sm`}>
                     {status}
                   </p>
@@ -487,14 +578,118 @@ function App() {
               )}
             </div>
 
-            {/* Task Management Section */}
+            {/* Today's Overview */}
+            <div className="grid md:grid-cols-2 gap-6">
+              {/* Today's Tasks */}
+              <div className={`${theme.bgSecondary} rounded-xl shadow-lg p-6`}>
+                <h3 className={`text-lg font-semibold ${theme.text} mb-4 flex items-center gap-2`}>
+                  <Clock size={20} />
+                  Heute fällig ({todaysTasks.length})
+                </h3>
+                <div className="space-y-2">
+                  {todaysTasks.length === 0 ? (
+                    <p className={theme.textSecondary}>Keine Aufgaben für heute</p>
+                  ) : (
+                    todaysTasks.slice(0, 5).map(task => {
+                      const category = categories.find(c => c.id === task.category);
+                      return (
+                        <div
+                          key={task.id}
+                          onClick={() => openTaskModal(task)}
+                          className={`${theme.bgTertiary} rounded-lg p-3 ${theme.hover} transition-colors cursor-pointer flex items-center justify-between`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <span className="text-sm">{category?.label}</span>
+                            <span className={theme.text}>{task.title}</span>
+                          </div>
+                          <ChevronRight size={16} className={theme.textSecondary} />
+                        </div>
+                      );
+                    })
+                  )}
+                  {todaysTasks.length > 5 && (
+                    <button
+                      onClick={() => setActiveView('tasks')}
+                      className={`text-sm ${theme.textSecondary} hover:text-blue-500`}
+                    >
+                      + {todaysTasks.length - 5} weitere...
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Open Tasks */}
+              <div className={`${theme.bgSecondary} rounded-xl shadow-lg p-6`}>
+                <h3 className={`text-lg font-semibold ${theme.text} mb-4 flex items-center gap-2`}>
+                  <ListTodo size={20} />
+                  Offene Aufgaben ({openTasks.length})
+                </h3>
+                <div className="space-y-2">
+                  {openTasks.length === 0 ? (
+                    <p className={theme.textSecondary}>Alle Aufgaben erledigt!</p>
+                  ) : (
+                    openTasks.slice(0, 5).map(task => {
+                      const category = categories.find(c => c.id === task.category);
+                      const deadlineStatus = getDeadlineStatus(task.deadline);
+                      return (
+                        <div
+                          key={task.id}
+                          onClick={() => openTaskModal(task)}
+                          className={`${theme.bgTertiary} rounded-lg p-3 ${theme.hover} transition-colors cursor-pointer flex items-center justify-between`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <span className="text-sm">{category?.label}</span>
+                            <span className={theme.text}>{task.title}</span>
+                            {task.deadline && (
+                              <span className={`text-xs px-2 py-1 rounded ${
+                                deadlineStatus === 'overdue' ? 'bg-red-500/20 text-red-400' :
+                                deadlineStatus === 'today' ? 'bg-orange-500/20 text-orange-400' :
+                                deadlineStatus === 'tomorrow' ? 'bg-yellow-500/20 text-yellow-400' :
+                                `${theme.bgSecondary} ${theme.textSecondary}`
+                              }`}>
+                                {new Date(task.deadline).toLocaleDateString('de-DE', { 
+                                  day: '2-digit', 
+                                  month: '2-digit' 
+                                })}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className={`text-xs ${theme.textSecondary}`}>{task.progress}%</span>
+                            <ChevronRight size={16} className={theme.textSecondary} />
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                  {openTasks.length > 5 && (
+                    <button
+                      onClick={() => setActiveView('tasks')}
+                      className={`text-sm ${theme.textSecondary} hover:text-blue-500`}
+                    >
+                      + {openTasks.length - 5} weitere...
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : activeView === 'calendar' ? (
+          <CalendarView 
+            tasks={tasks}
+            onTaskClick={openTaskModal}
+            isDarkMode={isDarkMode}
+          />
+        ) : (
+          // Tasks View
+          <div className="p-6 max-w-6xl mx-auto">
             <div className={`${theme.bgSecondary} rounded-xl shadow-lg p-6`}>
               <div className="flex justify-between items-center mb-6">
-                <h2 className={`text-xl font-semibold ${theme.text}`}>📋 Tasks</h2>
+                <h2 className={`text-xl font-semibold ${theme.text}`}>📋 Aufgabenliste</h2>
                 <button
                   onClick={() => setShowTaskInput(!showTaskInput)}
                   className="p-2 bg-blue-500 hover:bg-blue-600 rounded-lg text-white transition-colors"
-                  title="Manuell hinzufügen"
+                  title="Neue Aufgabe"
                 >
                   <Plus size={20} />
                 </button>
@@ -508,7 +703,7 @@ function App() {
                       type="text"
                       value={manualTaskText}
                       onChange={(e) => setManualTaskText(e.target.value)}
-                      placeholder="Task eingeben..."
+                      placeholder="Aufgabe eingeben..."
                       className={`flex-1 ${theme.bgSecondary} ${theme.text} rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500`}
                       onKeyPress={(e) => e.key === 'Enter' && createManualTask()}
                     />
@@ -573,8 +768,8 @@ function App() {
                 {filteredTasks.length === 0 ? (
                   <p className={`${theme.textSecondary} text-center py-8`}>
                     {selectedCategory === 'alle' 
-                      ? 'Noch keine Tasks. Sprich oder tippe, um zu beginnen!' 
-                      : 'Keine Tasks in dieser Kategorie.'}
+                      ? 'Noch keine Aufgaben vorhanden' 
+                      : 'Keine Aufgaben in dieser Kategorie'}
                   </p>
                 ) : (
                   filteredTasks.map(task => {
@@ -587,16 +782,14 @@ function App() {
                         className={`${theme.bgTertiary} rounded-xl p-4 ${theme.hover} transition-all cursor-pointer`}
                         onClick={() => openTaskModal(task)}
                       >
-                        <div className="flex justify-between items-start mb-2">
+                        <div className="flex justify-between items-center">
                           <div className="flex-1">
                             <h3 className={`${theme.text} font-medium mb-1`}>{task.title}</h3>
                             <div className="flex items-center gap-2 text-xs">
-                              {/* Category Badge */}
                               <span className={`${theme.bgSecondary} px-2 py-1 rounded-full ${theme.textSecondary}`}>
                                 {category?.label}
                               </span>
                               
-                              {/* Deadline Badge */}
                               {task.deadline && (
                                 <span className={`px-2 py-1 rounded-full flex items-center gap-1 ${
                                   deadlineStatus === 'overdue' ? 'bg-red-500/50 text-white' :
@@ -611,83 +804,30 @@ function App() {
                                   })}
                                 </span>
                               )}
+                              
+                              <span className={`${theme.textSecondary}`}>
+                                {task.progress}% erledigt
+                              </span>
                             </div>
                           </div>
                           
-                          {/* Delete Button */}
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
                               deleteTask(task.id);
                             }}
-                            className="p-1 hover:bg-red-500/50 rounded-lg text-red-400 hover:text-white transition-colors"
+                            className="p-2 hover:bg-red-500/50 rounded-lg text-red-400 hover:text-white transition-colors"
                           >
                             <X size={16} />
                           </button>
                         </div>
 
-                        {/* Progress Bar */}
-                        <div className="mb-3" onClick={(e) => e.stopPropagation()}>
-                          <div className={`flex justify-between text-xs ${theme.textSecondary} mb-1`}>
-                            <span>Fortschritt</span>
-                            <span>{task.progress}%</span>
-                          </div>
-                          <div className={`${theme.bgSecondary} rounded-full h-2 overflow-hidden`}>
-                            <div 
-                              className={`h-full transition-all duration-500 ${
-                                task.progress === 100 ? 'bg-green-500' :
-                                task.progress >= 75 ? 'bg-blue-500' :
-                                task.progress >= 50 ? 'bg-yellow-500' :
-                                task.progress >= 25 ? 'bg-orange-500' :
-                                'bg-gray-500'
-                              }`}
-                              style={{ width: `${task.progress}%` }}
-                            />
-                          </div>
-                          
-                          {/* Progress Buttons */}
-                          <div className="flex gap-1 mt-2">
-                            {[0, 25, 50, 75, 100].map(value => (
-                              <button
-                                key={value}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  updateProgress(task.id, value);
-                                }}
-                                className={`flex-1 py-1 text-xs rounded transition-colors ${
-                                  task.progress >= value 
-                                    ? 'bg-blue-500 text-white' 
-                                    : `${theme.bgSecondary} ${theme.textSecondary} ${theme.hover}`
-                                }`}
-                              >
-                                {value}%
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* AI Suggestions */}
+                        {/* AI Suggestions in List (wenn vorhanden) */}
                         {task.suggestions.length > 0 && (
-                          <div className={`pt-2 border-t ${theme.border}`} onClick={(e) => e.stopPropagation()}>
+                          <div className={`mt-3 pt-3 border-t ${theme.border}`} onClick={(e) => e.stopPropagation()}>
                             <div className={`flex items-center gap-1 text-xs ${theme.textSecondary} mb-2`}>
                               <Sparkles size={12} />
-                              <span>KI-Vorschläge:</span>
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                              {task.suggestions.map((suggestion, idx) => (
-                                <button
-                                  key={idx}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    executeSuggestion(task, suggestion);
-                                  }}
-                                  disabled={isProcessing}
-                                  className="px-3 py-1 bg-purple-500/30 hover:bg-purple-500/50 rounded-lg text-white text-xs flex items-center gap-1 transition-colors disabled:opacity-50"
-                                >
-                                  <suggestion.icon size={14} />
-                                  {suggestion.text}
-                                </button>
-                              ))}
+                              <span>KI-Vorschläge verfügbar</span>
                             </div>
                           </div>
                         )}
@@ -706,7 +846,7 @@ function App() {
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className={`${theme.bgSecondary} rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto`}>
             <div className={`sticky top-0 ${theme.bgSecondary} border-b ${theme.border} p-4 flex justify-between items-center`}>
-              <h2 className={`text-xl font-semibold ${theme.text}`}>Task Details</h2>
+              <h2 className={`text-xl font-semibold ${theme.text}`}>Aufgaben-Details</h2>
               <button
                 onClick={() => {
                   setShowTaskModal(false);
@@ -773,7 +913,7 @@ function App() {
                   <span>Fortschritt</span>
                   <span>{selectedTask.progress}%</span>
                 </div>
-                <div className={`${theme.bgTertiary} rounded-full h-3 overflow-hidden`}>
+                <div className={`${theme.bgTertiary} rounded-full h-3 overflow-hidden mb-3`}>
                   <div 
                     className={`h-full transition-all duration-500 ${
                       selectedTask.progress === 100 ? 'bg-green-500' :
@@ -785,7 +925,7 @@ function App() {
                     style={{ width: `${selectedTask.progress}%` }}
                   />
                 </div>
-                <div className="flex gap-2 mt-3">
+                <div className="flex gap-2">
                   {[0, 25, 50, 75, 100].map(value => (
                     <button
                       key={value}
@@ -893,12 +1033,6 @@ function App() {
           </div>
         </div>
       )}
-
-      {/* Footer Info */}
-      <div className={`text-center ${theme.textSecondary} text-xs p-4`}>
-        <p>💡 Spreche natürlich: "Morgen Zahnarzt anrufen" • "Mail an Bestatter schreiben"</p>
-        <p className="mt-1">{isMobile ? '📱 Mobile' : '💻 Desktop'} • Daten lokal gespeichert • Theme: {isDarkMode ? 'Dark' : 'Light'}</p>
-      </div>
     </div>
   );
 }
