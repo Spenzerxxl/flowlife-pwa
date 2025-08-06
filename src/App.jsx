@@ -1,15 +1,27 @@
+// App.jsx - FlowLife mit Supabase Integration
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   Mic, MicOff, Send, Loader2, Trash2, Plus, CheckCircle2, 
-  Clock, Tag, AlertCircle, Mail, Phone, Calendar, Menu,
-  ChevronDown, ChevronUp, Sparkles, Target, X, MessageSquare,
-  CalendarDays, Brain, Home, List, Settings, Search, Filter,
-  Edit2, Save, FileText, Link, Upload, Image as ImageIcon,
-  File, Paperclip, ExternalLink, AlertTriangle
+  Clock, Tag, AlertCircle, Mail, Phone, Calendar, 
+  ChevronDown, ChevronUp, Sparkles, Target, X, Sun, Moon,
+  Edit2, Save, FileText, CalendarDays, Menu, Home, ListTodo,
+  ChevronRight, LogOut, RefreshCw
 } from 'lucide-react';
 import CalendarView from './CalendarView';
+import AuthComponent from './AuthComponent';
+import { authService, tasksService } from './supabaseService';
 
 function App() {
+  // Authentication State
+  const [user, setUser] = useState(null);
+  const [loadingAuth, setLoadingAuth] = useState(true);
+
+  // Theme State
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    const saved = localStorage.getItem('flowlife_theme');
+    return saved ? saved === 'dark' : true;
+  });
+
   // Voice Recording States
   const [isRecording, setIsRecording] = useState(false);
   const [transcript, setTranscript] = useState('');
@@ -22,1203 +34,936 @@ function App() {
   const [tasks, setTasks] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('alle');
   const [showTaskInput, setShowTaskInput] = useState(false);
+  const [showVoiceInput, setShowVoiceInput] = useState(false);
   const [manualTaskText, setManualTaskText] = useState('');
   const [selectedDeadline, setSelectedDeadline] = useState('');
-  const [selectedTaskCategory, setSelectedTaskCategory] = useState('sonstiges');
-  const [searchQuery, setSearchQuery] = useState('');
-  
-  // Quick Add States (Dashboard)
-  const [quickTaskText, setQuickTaskText] = useState('');
-  const [quickTaskCategory, setQuickTaskCategory] = useState('');
-  const [quickTaskDeadline, setQuickTaskDeadline] = useState('');
+  const [selectedTaskCategory, setSelectedTaskCategory] = useState('Allgemein');
+  const [syncing, setSyncing] = useState(false);
+  const [lastSync, setLastSync] = useState(null);
   
   // Task Details States
-  const [expandedTaskId, setExpandedTaskId] = useState(null);
-  const [editingTaskId, setEditingTaskId] = useState(null);
-  const [editingTaskDetails, setEditingTaskDetails] = useState(null);
-  const [taskDescriptions, setTaskDescriptions] = useState({});
-  const [taskAttachments, setTaskAttachments] = useState({});
+  const [selectedTask, setSelectedTask] = useState(null);
+  const [showTaskModal, setShowTaskModal] = useState(false);
+  const [editingTask, setEditingTask] = useState(null);
+  const [taskNotes, setTaskNotes] = useState({});
   
-  // UI States
+  // View States
   const [activeView, setActiveView] = useState('dashboard');
   const [showSidebar, setShowSidebar] = useState(true);
-  
-  // Upload States
-  const [isDragging, setIsDragging] = useState(false);
-  const fileInputRef = useRef(null);
 
-  // Categories
+  // Real-time subscription
+  const subscriptionRef = useRef(null);
+
+  // Categories (angepasst an Datenbank-Kategorien)
   const categories = [
-    { id: 'familie', label: '👨‍👩‍👧 Familie', color: 'blue' },
-    { id: 'business', label: '💼 Business', color: 'purple' },
-    { id: 'loge', label: '🏛️ Loge', color: 'amber' },
-    { id: 'umzug', label: '📦 Umzug', color: 'green' },
-    { id: 'personal', label: '🏃 Personal', color: 'pink' },
-    { id: 'sonstiges', label: '📌 Sonstiges', color: 'gray' }
+    { id: 'Familie', label: '👨‍👩‍👧 Familie', color: 'blue' },
+    { id: 'Business', label: '💼 Business', color: 'purple' },
+    { id: 'Loge', label: '🏛️ Loge', color: 'amber' },
+    { id: 'Gesundheit', label: '💪 Gesundheit', color: 'green' },
+    { id: 'Finanzen', label: '💰 Finanzen', color: 'yellow' },
+    { id: 'Haushalt', label: '🏠 Haushalt', color: 'orange' },
+    { id: 'Termine', label: '📅 Termine', color: 'pink' },
+    { id: 'Umzug', label: '📦 Umzug', color: 'indigo' },
+    { id: 'Allgemein', label: '📌 Allgemein', color: 'gray' }
   ];
 
-  // Load data from localStorage on mount
+  // Initialize Authentication
   useEffect(() => {
-    const savedTasks = localStorage.getItem('flowlife_tasks');
-    const savedDescriptions = localStorage.getItem('flowlife_descriptions');
-    const savedAttachments = localStorage.getItem('flowlife_attachments');
-    const savedCalendarId = localStorage.getItem('flowlife_calendar_id');
+    checkUser();
     
-    if (savedTasks) {
-      setTasks(JSON.parse(savedTasks));
-    }
-    if (savedDescriptions) {
-      setTaskDescriptions(JSON.parse(savedDescriptions));
-    }
-    if (savedAttachments) {
-      setTaskAttachments(JSON.parse(savedAttachments));
-    }
-    if (savedCalendarId) {
-      setGoogleCalendarId(savedCalendarId);
-    }
+    // Listen to auth state changes
+    const { data: authListener } = authService.onAuthStateChange((event, session) => {
+      if (session?.user) {
+        setUser(session.user);
+        loadTasks();
+      } else {
+        setUser(null);
+        setTasks([]);
+      }
+    });
 
-    // Detect mobile device
-    const checkMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    setIsMobile(checkMobile);
-    
-    // Auto-hide sidebar on mobile
-    if (checkMobile) {
-      setShowSidebar(false);
-    }
+    return () => {
+      if (authListener) authListener.subscription.unsubscribe();
+      if (subscriptionRef.current) {
+        tasksService.unsubscribeFromChanges(subscriptionRef.current);
+      }
+    };
   }, []);
 
-  // Save data to localStorage whenever they change
-  useEffect(() => {
-    localStorage.setItem('flowlife_tasks', JSON.stringify(tasks));
-  }, [tasks]);
-
-  useEffect(() => {
-    localStorage.setItem('flowlife_descriptions', JSON.stringify(taskDescriptions));
-  }, [taskDescriptions]);
-
-  useEffect(() => {
-    localStorage.setItem('flowlife_attachments', JSON.stringify(taskAttachments));
-  }, [taskAttachments]);
-
-  // AI-powered task parsing from transcript
-  const parseTaskFromTranscript = (text) => {
-    const lowerText = text.toLowerCase();
-    
-    // Detect category
-    let category = 'sonstiges';
-    if (lowerText.includes('familie') || lowerText.includes('mutter') || lowerText.includes('vater') || lowerText.includes('schwiegermutter')) {
-      category = 'familie';
-    } else if (lowerText.includes('arbeit') || lowerText.includes('business') || lowerText.includes('meeting') || lowerText.includes('projekt')) {
-      category = 'business';
-    } else if (lowerText.includes('loge') || lowerText.includes('bruder')) {
-      category = 'loge';
-    } else if (lowerText.includes('umzug') || lowerText.includes('karton') || lowerText.includes('packen')) {
-      category = 'umzug';
-    } else if (lowerText.includes('sport') || lowerText.includes('training') || lowerText.includes('arzt')) {
-      category = 'personal';
+  // Check current user
+  const checkUser = async () => {
+    const currentUser = await authService.getCurrentUser();
+    if (currentUser) {
+      setUser(currentUser);
+      await loadTasks();
+      subscribeToTaskChanges();
     }
-
-    // Detect deadline
-    let deadline = null;
-    const today = new Date();
-    if (lowerText.includes('heute')) {
-      deadline = today.toISOString().split('T')[0];
-    } else if (lowerText.includes('morgen')) {
-      const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      deadline = tomorrow.toISOString().split('T')[0];
-    } else if (lowerText.includes('übermorgen')) {
-      const dayAfter = new Date(today);
-      dayAfter.setDate(dayAfter.getDate() + 2);
-      deadline = dayAfter.toISOString().split('T')[0];
-    } else if (lowerText.includes('nächste woche')) {
-      const nextWeek = new Date(today);
-      nextWeek.setDate(nextWeek.getDate() + 7);
-      deadline = nextWeek.toISOString().split('T')[0];
-    }
-
-    // Generate AI suggestions based on content
-    const suggestions = [];
-    if (lowerText.includes('mail') || lowerText.includes('email') || lowerText.includes('schreiben')) {
-      suggestions.push({ icon: Mail, text: 'E-Mail formulieren', action: 'compose_email' });
-    }
-    if (lowerText.includes('anrufen') || lowerText.includes('telefonieren')) {
-      suggestions.push({ icon: Phone, text: 'Anruf vorbereiten', action: 'prepare_call' });
-    }
-    if (lowerText.includes('termin') || lowerText.includes('treffen')) {
-      suggestions.push({ icon: Calendar, text: 'Termin eintragen', action: 'schedule' });
-    }
-    if (lowerText.includes('beerdigung') || lowerText.includes('bestatter')) {
-      suggestions.push({ icon: Mail, text: 'Einfühlsame Nachricht', action: 'sympathy_message' });
-    }
-
-    return {
-      id: Date.now().toString(),
-      title: text.trim(),
-      category,
-      deadline,
-      progress: 0,
-      suggestions,
-      created_at: new Date().toISOString(),
-      completed_at: null
-    };
+    setLoadingAuth(false);
   };
 
-  // Create task from transcript
-  const createTaskFromTranscript = () => {
-    if (!transcript.trim()) return;
-    
-    const newTask = parseTaskFromTranscript(transcript);
-    setTasks(prev => [newTask, ...prev]);
-    setTranscript('');
-    setStatus('✅ Task erstellt: ' + newTask.title.slice(0, 30) + '...');
-    
-    setTimeout(() => {
-      setStatus('');
-    }, 3000);
-  };
-
-  // Create manual task (Aufgaben-Seite)
-  const createManualTask = () => {
-    if (!manualTaskText.trim()) return;
-    
-    const newTask = {
-      id: Date.now().toString(),
-      title: manualTaskText.trim(),
-      category: selectedTaskCategory,
-      deadline: selectedDeadline || null,
-      progress: 0,
-      suggestions: [],
-      created_at: new Date().toISOString(),
-      completed_at: null
-    };
-    
-    setTasks(prev => [newTask, ...prev]);
-    setManualTaskText('');
-    setSelectedDeadline('');
-    setSelectedTaskCategory('sonstiges');
-    setShowTaskInput(false);
-  };
-
-  // Create quick task (Dashboard)
-  const createQuickTask = () => {
-    if (!quickTaskText.trim()) return;
-    
-    const newTask = {
-      id: Date.now().toString(),
-      title: quickTaskText.trim(),
-      category: quickTaskCategory || 'sonstiges',
-      deadline: quickTaskDeadline || null,
-      progress: 0,
-      suggestions: [],
-      created_at: new Date().toISOString(),
-      completed_at: null
-    };
-    
-    setTasks(prev => [newTask, ...prev]);
-    setQuickTaskText('');
-    setQuickTaskCategory('');
-    setQuickTaskDeadline('');
-    setStatus('✅ Aufgabe hinzugefügt!');
-    
-    setTimeout(() => {
-      setStatus('');
-    }, 2000);
-  };
-
-  // Update task
-  const updateTask = (taskId, updates) => {
-    setTasks(prev => prev.map(task => {
-      if (task.id === taskId) {
-        return { ...task, ...updates };
-      }
-      return task;
-    }));
-  };
-
-  // Start editing task details
-  const startEditingTask = (task) => {
-    setEditingTaskId(task.id);
-    setEditingTaskDetails({
-      title: task.title,
-      category: task.category,
-      deadline: task.deadline || ''
-    });
-  };
-
-  // Save task edits
-  const saveTaskEdits = (taskId) => {
-    if (editingTaskDetails) {
-      updateTask(taskId, editingTaskDetails);
-      setEditingTaskId(null);
-      setEditingTaskDetails(null);
-    }
-  };
-
-  // Cancel task edits
-  const cancelTaskEdits = () => {
-    setEditingTaskId(null);
-    setEditingTaskDetails(null);
-  };
-
-  // Update task progress
-  const updateProgress = (taskId, progress) => {
-    setTasks(prev => prev.map(task => {
-      if (task.id === taskId) {
-        return {
-          ...task,
-          progress,
-          completed_at: progress === 100 ? new Date().toISOString() : null
-        };
-      }
-      return task;
-    }));
-  };
-
-  // Delete task
-  const deleteTask = (taskId) => {
-    setTasks(prev => prev.filter(task => task.id !== taskId));
-    // Also clean up descriptions and attachments
-    setTaskDescriptions(prev => {
-      const newDescriptions = { ...prev };
-      delete newDescriptions[taskId];
-      return newDescriptions;
-    });
-    setTaskAttachments(prev => {
-      const newAttachments = { ...prev };
-      delete newAttachments[taskId];
-      return newAttachments;
-    });
-  };
-
-  // Update task description
-  const updateTaskDescription = (taskId, description) => {
-    setTaskDescriptions(prev => ({
-      ...prev,
-      [taskId]: description
-    }));
-  };
-
-  // Handle file upload
-  const handleFileUpload = (taskId, files) => {
-    const newAttachments = [];
-    
-    Array.from(files).forEach(file => {
-      // Convert file to base64 for localStorage
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const attachment = {
-          id: Date.now().toString() + '_' + file.name,
-          name: file.name,
-          type: file.type.startsWith('image/') ? 'image' : 
-                file.type === 'application/pdf' ? 'pdf' : 'file',
-          size: file.size,
-          data: e.target.result, // Base64 data
-          uploadedAt: new Date().toISOString()
-        };
-        
-        setTaskAttachments(prev => ({
-          ...prev,
-          [taskId]: [...(prev[taskId] || []), attachment]
-        }));
-        
-        setStatus(`✅ ${file.name} hochgeladen`);
-        setTimeout(() => setStatus(''), 2000);
-      };
-      reader.readAsDataURL(file);
-    });
-  };
-
-  // Remove attachment
-  const removeAttachment = (taskId, attachmentId) => {
-    setTaskAttachments(prev => ({
-      ...prev,
-      [taskId]: prev[taskId].filter(att => att.id !== attachmentId)
-    }));
-  };
-
-  // Handle drag and drop
-  const handleDragOver = (e) => {
-    e.preventDefault();
-    setIsDragging(true);
-  };
-
-  const handleDragLeave = (e) => {
-    e.preventDefault();
-    setIsDragging(false);
-  };
-
-  const handleDrop = (e, taskId) => {
-    e.preventDefault();
-    setIsDragging(false);
-    
-    const files = e.dataTransfer.files;
-    if (files.length > 0) {
-      handleFileUpload(taskId, files);
-    }
-  };
-
-  // Execute AI suggestion
-  const executeSuggestion = async (task, suggestion) => {
-    setStatus(`🤖 ${suggestion.text} wird vorbereitet...`);
-    setIsProcessing(true);
-    
-    // Hier später: n8n Webhook triggern
-    setTimeout(() => {
-      setStatus(`✨ ${suggestion.text} - Bereit zur Ausführung`);
-      setIsProcessing(false);
-      
-      // Erhöhe Progress um 25%
-      const newProgress = Math.min(task.progress + 25, 100);
-      updateProgress(task.id, newProgress);
-    }, 2000);
-  };
-
-  // Filter tasks based on search and category
-  const filteredTasks = tasks.filter(task => {
-    const matchesCategory = selectedCategory === 'alle' || task.category === selectedCategory;
-    const matchesSearch = !searchQuery || 
-      task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (taskDescriptions[task.id] && taskDescriptions[task.id].toLowerCase().includes(searchQuery.toLowerCase()));
-    return matchesCategory && matchesSearch;
-  });
-
-  // Get deadline status
-  const getDeadlineStatus = (deadline) => {
-    if (!deadline) return null;
-    
-    const today = new Date().toISOString().split('T')[0];
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const tomorrowStr = tomorrow.toISOString().split('T')[0];
-    
-    if (deadline < today) return 'overdue';
-    if (deadline === today) return 'today';
-    if (deadline === tomorrowStr) return 'tomorrow';
-    return 'future';
-  };
-
-  // Voice recording functions
-  const startRecording = () => {
-    if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
-      setStatus('❌ Dein Browser unterstützt keine Spracherkennung');
-      return;
-    }
-
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    recognitionRef.current = new SpeechRecognition();
-    recognitionRef.current.lang = 'de-DE';
-    recognitionRef.current.continuous = !isMobile;
-    recognitionRef.current.interimResults = !isMobile;
-    recognitionRef.current.maxAlternatives = 1;
-
-    recognitionRef.current.onstart = () => {
-      setIsRecording(true);
-      setStatus('🎙️ Spreche jetzt...');
-    };
-
-    recognitionRef.current.onresult = (event) => {
-      if (isMobile) {
-        const lastResult = event.results[event.results.length - 1];
-        if (lastResult.isFinal || !recognitionRef.current.interimResults) {
-          const newText = lastResult[0].transcript;
-          setTranscript(prev => {
-            if (!prev.endsWith(newText)) {
-              return (prev + ' ' + newText).trim();
-            }
-            return prev;
-          });
-        }
-      } else {
-        let finalText = '';
-        let interimText = '';
-        
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const transcript = event.results[i][0].transcript;
-          if (event.results[i].isFinal) {
-            finalText += transcript + ' ';
-          } else {
-            interimText += transcript;
-          }
-        }
-        
-        if (finalText) {
-          setTranscript(prev => (prev + ' ' + finalText).trim());
-        }
-      }
-    };
-
-    recognitionRef.current.onerror = (event) => {
-      console.error('Speech recognition error', event);
-      if (event.error === 'no-speech') {
-        setStatus('🔇 Keine Sprache erkannt');
-      } else if (event.error === 'not-allowed') {
-        setStatus('🎤 Bitte Mikrofon-Zugriff erlauben');
-      } else if (event.error === 'aborted') {
-        setStatus('');
-      } else {
-        setStatus('❌ Fehler: ' + event.error);
-      }
-      setIsRecording(false);
-    };
-
-    recognitionRef.current.onend = () => {
-      setIsRecording(false);
-      if (isMobile && transcript.length < 100) {
-        setStatus('👆 Tippe erneut zum Weitersprechen');
-      } else {
-        setStatus('');
-      }
-    };
-
+  // Load tasks from Supabase
+  const loadTasks = async () => {
+    setSyncing(true);
     try {
-      recognitionRef.current.start();
+      const tasksData = await tasksService.getTasks();
+      setTasks(tasksData);
+      setLastSync(new Date());
+      setStatus('Aufgaben synchronisiert');
     } catch (error) {
-      console.error('Start error:', error);
-      setStatus('❌ Konnte Aufnahme nicht starten');
-      setIsRecording(false);
+      setStatus('Fehler beim Laden der Aufgaben');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  // Subscribe to real-time changes
+  const subscribeToTaskChanges = () => {
+    if (subscriptionRef.current) {
+      tasksService.unsubscribeFromChanges(subscriptionRef.current);
+    }
+
+    subscriptionRef.current = tasksService.subscribeToChanges((payload) => {
+      if (payload.eventType === 'INSERT') {
+        setTasks(prev => [...prev, payload.new]);
+      } else if (payload.eventType === 'UPDATE') {
+        setTasks(prev => prev.map(task => 
+          task.id === payload.new.id ? payload.new : task
+        ));
+      } else if (payload.eventType === 'DELETE') {
+        setTasks(prev => prev.filter(task => task.id !== payload.old.id));
+      }
+      setLastSync(new Date());
+    });
+  };
+
+  // Handle Authentication Success
+  const handleAuthSuccess = (authenticatedUser) => {
+    setUser(authenticatedUser);
+    loadTasks();
+    subscribeToTaskChanges();
+  };
+
+  // Handle Logout
+  const handleLogout = async () => {
+    await authService.signOut();
+    setUser(null);
+    setTasks([]);
+    if (subscriptionRef.current) {
+      tasksService.unsubscribeFromChanges(subscriptionRef.current);
+    }
+  };
+
+  // Mobile Detection
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth <= 768);
+      if (window.innerWidth <= 768) {
+        setShowSidebar(false);
+      }
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  // Theme Toggle
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', isDarkMode);
+    localStorage.setItem('flowlife_theme', isDarkMode ? 'dark' : 'light');
+  }, [isDarkMode]);
+
+  // Speech Recognition Setup
+  useEffect(() => {
+    if (!user) return;
+
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      recognitionRef.current = new SpeechRecognition();
+      recognitionRef.current.continuous = false;
+      recognitionRef.current.interimResults = true;
+      recognitionRef.current.lang = 'de-DE';
+
+      recognitionRef.current.onresult = (event) => {
+        const current = event.resultIndex;
+        const transcript = event.results[current][0].transcript;
+        setTranscript(transcript);
+      };
+
+      recognitionRef.current.onerror = (event) => {
+        console.error('Speech recognition error:', event.error);
+        setIsRecording(false);
+        setStatus('Fehler bei der Spracherkennung');
+      };
+
+      recognitionRef.current.onend = () => {
+        setIsRecording(false);
+        if (transcript) {
+          processVoiceInput(transcript);
+        }
+      };
+    }
+  }, [user]);
+
+  // Voice Recording Functions
+  const startRecording = () => {
+    if (recognitionRef.current && !isRecording) {
+      setTranscript('');
+      setIsRecording(true);
+      recognitionRef.current.start();
+      setStatus('Sprechen Sie jetzt...');
     }
   };
 
   const stopRecording = () => {
-    if (recognitionRef.current) {
+    if (recognitionRef.current && isRecording) {
       recognitionRef.current.stop();
       setIsRecording(false);
-      setStatus('');
+      setStatus('Verarbeite...');
     }
   };
 
-  const clearTranscript = () => {
-    setTranscript('');
-    setStatus('');
+  // Process Voice Input
+  const processVoiceInput = async (text) => {
+    setIsProcessing(true);
+    
+    const task = {
+      title: text,
+      description: '',
+      category: 'Allgemein',
+      deadline: null,
+      voiceCreated: true
+    };
+
+    if (text.toLowerCase().includes('termin') || text.toLowerCase().includes('meeting')) {
+      task.category = 'Termine';
+    } else if (text.toLowerCase().includes('familie')) {
+      task.category = 'Familie';
+    } else if (text.toLowerCase().includes('arbeit') || text.toLowerCase().includes('business')) {
+      task.category = 'Business';
+    }
+
+    const result = await tasksService.createTask(task);
+    
+    if (result.success) {
+      setStatus('Aufgabe erstellt und synchronisiert!');
+      setTranscript('');
+      setShowVoiceInput(false);
+      await loadTasks(); // Reload to get latest data
+    } else {
+      setStatus('Fehler beim Erstellen der Aufgabe');
+    }
+    
+    setIsProcessing(false);
   };
 
-  // Format file size
-  const formatFileSize = (bytes) => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
-  };
+  // Add Manual Task
+  const addManualTask = async () => {
+    if (!manualTaskText.trim()) return;
 
-  // Render different views based on activeView
-  const renderContent = () => {
-    switch (activeView) {
-      case 'dashboard':
-        return renderDashboard();
-      case 'tasks':
-        return renderTasks();
-      case 'calendar':
-        return renderCalendar();
-      case 'ai':
-        return renderAI();
-      case 'voice':
-        return renderVoiceInput();
-      default:
-        return renderDashboard();
+    const task = {
+      title: manualTaskText,
+      description: '',
+      category: selectedTaskCategory,
+      deadline: selectedDeadline || null,
+      voiceCreated: false
+    };
+
+    const result = await tasksService.createTask(task);
+    
+    if (result.success) {
+      setManualTaskText('');
+      setSelectedDeadline('');
+      setSelectedTaskCategory('Allgemein');
+      setShowTaskInput(false);
+      setStatus('Aufgabe erstellt!');
+      await loadTasks();
+    } else {
+      setStatus('Fehler beim Erstellen der Aufgabe');
     }
   };
 
-  const renderDashboard = () => {
+  // Toggle Task Completion
+  const toggleTaskComplete = async (taskId) => {
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) return;
+
+    const result = await tasksService.updateTask(taskId, {
+      completed: !task.completed
+    });
+
+    if (result.success) {
+      await loadTasks();
+      setStatus(task.completed ? 'Aufgabe wieder geöffnet' : 'Aufgabe erledigt!');
+    }
+  };
+
+  // Update Task Progress
+  const updateTaskProgress = async (taskId, progress) => {
+    const result = await tasksService.updateTask(taskId, { progress });
+    
+    if (result.success) {
+      await loadTasks();
+    }
+  };
+
+  // Delete Task
+  const deleteTask = async (taskId) => {
+    const result = await tasksService.deleteTask(taskId);
+    
+    if (result.success) {
+      setSelectedTask(null);
+      setShowTaskModal(false);
+      await loadTasks();
+      setStatus('Aufgabe gelöscht');
+    }
+  };
+
+  // Save Task Edits
+  const saveTaskEdit = async () => {
+    if (!editingTask) return;
+
+    const result = await tasksService.updateTask(editingTask.id, {
+      title: editingTask.title,
+      description: editingTask.description,
+      category: editingTask.category,
+      deadline: editingTask.deadline
+    });
+
+    if (result.success) {
+      setEditingTask(null);
+      setSelectedTask(editingTask);
+      await loadTasks();
+      setStatus('Aufgabe aktualisiert');
+    }
+  };
+
+  // Filter tasks by category
+  const filteredTasks = selectedCategory === 'alle' 
+    ? tasks 
+    : tasks.filter(task => task.category === selectedCategory);
+
+  // Show loading screen while checking authentication
+  if (loadingAuth) {
     return (
-      <div className="p-6">
-        <h1 className="text-3xl font-bold text-gray-800 mb-6">Dashboard</h1>
+      <div className="min-h-screen bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+        <div className="text-white text-center">
+          <Loader2 className="h-12 w-12 animate-spin mx-auto mb-4" />
+          <p className="text-xl">Lade FlowLife...</p>
+        </div>
+      </div>
+    );
+  }
 
-        {/* Schnell-Eingabe */}
-        <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200 mb-6">
-          <h2 className="text-lg font-semibold text-gray-800 mb-4">Schnell-Eingabe</h2>
-          <div className="space-y-3">
-            <input
-              type="text"
-              value={quickTaskText}
-              onChange={(e) => setQuickTaskText(e.target.value)}
-              placeholder="Neue Aufgabe hinzufügen..."
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-              onKeyPress={(e) => e.key === 'Enter' && createQuickTask()}
-            />
-            
-            <div className="flex gap-3">
-              <select
-                value={quickTaskCategory}
-                onChange={(e) => setQuickTaskCategory(e.target.value)}
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-              >
-                <option value="">Kategorie (optional)</option>
-                {categories.map(cat => (
-                  <option key={cat.id} value={cat.id}>{cat.label}</option>
-                ))}
-              </select>
-              
-              <input
-                type="date"
-                value={quickTaskDeadline}
-                onChange={(e) => setQuickTaskDeadline(e.target.value)}
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                placeholder="Datum (optional)"
-              />
-              
+  // Show login screen if not authenticated
+  if (!user) {
+    return <AuthComponent onAuthSuccess={handleAuthSuccess} />;
+  }
+
+  // Main App UI - Part 1 of return statement
+  return (
+    <div className={`min-h-screen ${isDarkMode ? 'dark bg-gray-900' : 'bg-gray-50'}`}>
+      {/* Header */}
+      <header className="bg-white dark:bg-gray-800 shadow-sm border-b dark:border-gray-700">
+        <div className="flex items-center justify-between px-4 py-3">
+          <div className="flex items-center gap-3">
+            {isMobile && (
+              <button onClick={() => setShowSidebar(!showSidebar)}>
+                <Menu className="h-6 w-6 dark:text-gray-300" />
+              </button>
+            )}
+            <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+              FlowLife
+            </h1>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            {/* Sync Status */}
+            <button 
+              onClick={loadTasks}
+              disabled={syncing}
+              className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+              title={lastSync ? `Letzte Sync: ${lastSync.toLocaleTimeString()}` : 'Synchronisieren'}
+            >
+              <RefreshCw className={`h-5 w-5 dark:text-gray-300 ${syncing ? 'animate-spin' : ''}`} />
+            </button>
+
+            {/* Theme Toggle */}
+            <button
+              onClick={() => setIsDarkMode(!isDarkMode)}
+              className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            >
+              {isDarkMode ? 
+                <Sun className="h-5 w-5 text-yellow-500" /> : 
+                <Moon className="h-5 w-5 text-gray-600" />
+              }
+            </button>
+
+            {/* User Menu */}
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-600 dark:text-gray-400 hidden sm:block">
+                {user.email}
+              </span>
               <button
-                onClick={createQuickTask}
-                disabled={!quickTaskText.trim()}
-                className="px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                onClick={handleLogout}
+                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                title="Abmelden"
               >
-                Hinzufügen
+                <LogOut className="h-5 w-5 dark:text-gray-300" />
               </button>
             </div>
           </div>
         </div>
+      </header>
 
-        {/* Aktuelle Aufgaben */}
-        <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-lg font-semibold text-gray-800">Aktuelle Aufgaben</h2>
-            <button
-              onClick={() => setActiveView('tasks')}
-              className="text-purple-600 hover:text-purple-700 text-sm"
-            >
-              Alle anzeigen →
-            </button>
-          </div>
-          
-          <div className="space-y-2">
-            {tasks.length === 0 ? (
-              <p className="text-gray-500 text-center py-4">Noch keine Aufgaben vorhanden</p>
-            ) : (
-              tasks.slice(0, 5).map(task => {
-                const category = categories.find(c => c.id === task.category);
-                const deadlineStatus = getDeadlineStatus(task.deadline);
-                
-                return (
-                  <div key={task.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
-                       onClick={() => {
-                         setActiveView('tasks');
-                         setExpandedTaskId(task.id);
-                       }}>
-                    <div className="flex items-center gap-3">
-                      <span className="text-sm">{category?.label}</span>
-                      <span className="font-medium text-gray-800">{task.title}</span>
+      <div className="flex h-[calc(100vh-64px)]">
+        {/* Sidebar */}
+        {showSidebar && (
+          <aside className={`${isMobile ? 'absolute z-40 h-full' : 'relative'} w-64 bg-white dark:bg-gray-800 shadow-lg`}>
+            <nav className="p-4">
+              <button
+                onClick={() => setActiveView('dashboard')}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                  activeView === 'dashboard' 
+                    ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' 
+                    : 'hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-300'
+                }`}
+              >
+                <Home className="h-5 w-5" />
+                <span className="font-medium">Dashboard</span>
+              </button>
+              
+              <button
+                onClick={() => setActiveView('tasks')}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors mt-2 ${
+                  activeView === 'tasks' 
+                    ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' 
+                    : 'hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-300'
+                }`}
+              >
+                <ListTodo className="h-5 w-5" />
+                <span className="font-medium">Aufgaben</span>
+              </button>
+
+              <button
+                onClick={() => setActiveView('calendar')}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors mt-2 ${
+                  activeView === 'calendar' 
+                    ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' 
+                    : 'hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-300'
+                }`}
+              >
+                <CalendarDays className="h-5 w-5" />
+                <span className="font-medium">Kalender</span>
+              </button>
+
+              {/* Categories */}
+              <div className="mt-8">
+                <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
+                  Kategorien
+                </h3>
+                <button
+                  onClick={() => setSelectedCategory('alle')}
+                  className={`w-full text-left px-4 py-2 rounded-lg transition-colors ${
+                    selectedCategory === 'alle'
+                      ? 'bg-gray-100 dark:bg-gray-700'
+                      : 'hover:bg-gray-50 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  <span className="dark:text-gray-300">📊 Alle Aufgaben</span>
+                </button>
+                {categories.map(cat => (
+                  <button
+                    key={cat.id}
+                    onClick={() => setSelectedCategory(cat.id)}
+                    className={`w-full text-left px-4 py-2 rounded-lg transition-colors ${
+                      selectedCategory === cat.id
+                        ? 'bg-gray-100 dark:bg-gray-700'
+                        : 'hover:bg-gray-50 dark:hover:bg-gray-700'
+                    }`}
+                  >
+                    <span className="dark:text-gray-300">{cat.label}</span>
+                  </button>
+                ))}
+              </div>
+            </nav>
+          </aside>
+        )}
+
+        {/* Main Content */}
+        <main className="flex-1 overflow-y-auto">
+          {/* Dashboard View */}
+          {activeView === 'dashboard' && (
+            <div className="p-6">
+              <h2 className="text-2xl font-bold mb-6 dark:text-white">Dashboard</h2>
+              
+              {/* Quick Entry Section */}
+              <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6 mb-6">
+                <h3 className="text-lg font-semibold mb-4 dark:text-white">Schnelleintrag</h3>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setShowVoiceInput(true)}
+                    className="flex-1 bg-gradient-to-r from-blue-500 to-purple-600 text-white p-4 rounded-xl hover:shadow-lg transition-shadow"
+                  >
+                    <Mic className="h-6 w-6 mx-auto mb-2" />
+                    <span className="block text-sm">Spracheingabe</span>
+                  </button>
+                  <button
+                    onClick={() => setShowTaskInput(true)}
+                    className="flex-1 bg-gradient-to-r from-green-500 to-teal-600 text-white p-4 rounded-xl hover:shadow-lg transition-shadow"
+                  >
+                    <Plus className="h-6 w-6 mx-auto mb-2" />
+                    <span className="block text-sm">Neue Aufgabe</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Stats */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm">
+                  <div className="text-3xl font-bold text-blue-600 dark:text-blue-400">
+                    {tasks.filter(t => !t.completed).length}
+                  </div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400">Offene Aufgaben</div>
+                </div>
+                <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm">
+                  <div className="text-3xl font-bold text-green-600 dark:text-green-400">
+                    {tasks.filter(t => t.completed).length}
+                  </div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400">Erledigt</div>
+                </div>
+                <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm">
+                  <div className="text-3xl font-bold text-purple-600 dark:text-purple-400">
+                    {tasks.length}
+                  </div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400">Gesamt</div>
+                </div>
+                <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm">
+                  <div className="text-3xl font-bold text-amber-600 dark:text-amber-400">
+                    {tasks.filter(t => t.deadline && new Date(t.deadline) <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)).length}
+                  </div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400">Diese Woche</div>
+                </div>
+              </div>
+
+              {/* Recent Tasks */}
+              <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
+                <h3 className="text-lg font-semibold mb-4 dark:text-white">Aktuelle Aufgaben</h3>
+                <div className="space-y-2">
+                  {filteredTasks.slice(0, 5).map(task => (
+                    <div
+                      key={task.id}
+                      onClick={() => {
+                        setSelectedTask(task);
+                        setShowTaskModal(true);
+                      }}
+                      className="flex items-center justify-between p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleTaskComplete(task.id);
+                          }}
+                          className={`w-5 h-5 rounded-full border-2 ${
+                            task.completed
+                              ? 'bg-green-500 border-green-500'
+                              : 'border-gray-300 dark:border-gray-600'
+                          }`}
+                        >
+                          {task.completed && <CheckCircle2 className="h-4 w-4 text-white" />}
+                        </button>
+                        <div>
+                          <p className={`font-medium dark:text-white ${task.completed ? 'line-through opacity-50' : ''}`}>
+                            {task.title}
+                          </p>
+                          <p className="text-sm text-gray-500 dark:text-gray-400">
+                            {categories.find(c => c.id === task.category)?.label || task.category}
+                          </p>
+                        </div>
+                      </div>
                       {task.deadline && (
-                        <span className={`text-xs px-2 py-1 rounded-full ${
-                          deadlineStatus === 'overdue' ? 'bg-red-100 text-red-700' :
-                          deadlineStatus === 'today' ? 'bg-orange-100 text-orange-700' :
-                          'bg-gray-100 text-gray-600'
-                        }`}>
+                        <span className="text-sm text-gray-500 dark:text-gray-400">
                           {new Date(task.deadline).toLocaleDateString('de-DE')}
                         </span>
                       )}
                     </div>
-                    <div className="flex items-center gap-3">
-                      <div className="w-20 bg-gray-200 rounded-full h-2">
-                        <div className="bg-purple-600 h-2 rounded-full transition-all" style={{ width: `${task.progress}%` }} />
-                      </div>
-                      <span className="text-sm text-gray-500 w-10 text-right">{task.progress}%</span>
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  const renderTasks = () => {
-    return (
-      <div className="p-6">
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-3xl font-bold text-gray-800">Aufgaben</h1>
-          <button
-            onClick={() => setShowTaskInput(!showTaskInput)}
-            className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg flex items-center gap-2 transition-colors"
-          >
-            <Plus size={20} />
-            Neue Aufgabe
-          </button>
-        </div>
-
-        {/* Search Bar */}
-        <div className="mb-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Aufgaben durchsuchen..."
-              className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-            />
-          </div>
-        </div>
-
-        {/* Add Task Form */}
-        {showTaskInput && (
-          <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200 mb-4">
-            <div className="space-y-3">
-              <input
-                type="text"
-                value={manualTaskText}
-                onChange={(e) => setManualTaskText(e.target.value)}
-                placeholder="Aufgabe eingeben..."
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                onKeyPress={(e) => e.key === 'Enter' && createManualTask()}
-              />
-              
-              <div className="flex gap-3">
-                <select
-                  value={selectedTaskCategory}
-                  onChange={(e) => setSelectedTaskCategory(e.target.value)}
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                >
-                  {categories.map(cat => (
-                    <option key={cat.id} value={cat.id}>{cat.label}</option>
                   ))}
-                </select>
-                
-                <input
-                  type="date"
-                  value={selectedDeadline}
-                  onChange={(e) => setSelectedDeadline(e.target.value)}
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                />
-                
-                <button
-                  onClick={createManualTask}
-                  disabled={!manualTaskText.trim()}
-                  className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg disabled:opacity-50 transition-colors"
-                >
-                  Hinzufügen
-                </button>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Category Filter */}
-        <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
-          <button
-            onClick={() => setSelectedCategory('alle')}
-            className={`px-4 py-2 rounded-lg whitespace-nowrap transition-colors ${
-              selectedCategory === 'alle' 
-                ? 'bg-purple-600 text-white' 
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            Alle ({tasks.length})
-          </button>
-          {categories.map(cat => {
-            const count = tasks.filter(t => t.category === cat.id).length;
-            return (
-              <button
-                key={cat.id}
-                onClick={() => setSelectedCategory(cat.id)}
-                className={`px-4 py-2 rounded-lg whitespace-nowrap transition-colors ${
-                  selectedCategory === cat.id 
-                    ? 'bg-purple-600 text-white' 
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                {cat.label} ({count})
-              </button>
-            );
-          })}
-        </div>
+          {/* Tasks View */}
+          {activeView === 'tasks' && (
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold dark:text-white">Aufgaben</h2>
+                <button
+                  onClick={() => setShowTaskInput(true)}
+                  className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+                >
+                  <Plus className="h-5 w-5" />
+                  Neue Aufgabe
+                </button>
+              </div>
 
-        {/* Task List */}
-        <div className="space-y-3">
-          {filteredTasks.length === 0 ? (
-            <div className="text-center py-12 text-gray-500">
-              {searchQuery ? 'Keine Aufgaben gefunden' : 'Noch keine Aufgaben vorhanden'}
-            </div>
-          ) : (
-            filteredTasks.map(task => {
-              const deadlineStatus = getDeadlineStatus(task.deadline);
-              const category = categories.find(c => c.id === task.category);
-              const isExpanded = expandedTaskId === task.id;
-              const isEditing = editingTaskId === task.id;
-              
-              return (
-                <div key={task.id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                  <div className="p-4">
-                    <div className="flex justify-between items-start mb-2">
-                      <div className="flex-1">
-                        {isEditing ? (
-                          <div className="space-y-2">
-                            <input
-                              type="text"
-                              value={editingTaskDetails.title}
-                              onChange={(e) => setEditingTaskDetails({...editingTaskDetails, title: e.target.value})}
-                              className="w-full px-3 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-purple-500"
-                            />
-                            <div className="flex gap-2">
-                              <select
-                                value={editingTaskDetails.category}
-                                onChange={(e) => setEditingTaskDetails({...editingTaskDetails, category: e.target.value})}
-                                className="flex-1 px-3 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-purple-500"
-                              >
-                                {categories.map(cat => (
-                                  <option key={cat.id} value={cat.id}>{cat.label}</option>
-                                ))}
-                              </select>
-                              <input
-                                type="date"
-                                value={editingTaskDetails.deadline}
-                                onChange={(e) => setEditingTaskDetails({...editingTaskDetails, deadline: e.target.value})}
-                                className="flex-1 px-3 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-purple-500"
-                              />
-                            </div>
-                          </div>
-                        ) : (
-                          <>
-                            <h3 className="text-lg font-medium text-gray-800 mb-2">{task.title}</h3>
-                            <div className="flex items-center gap-2 text-sm">
-                              <span className="bg-gray-100 px-2 py-1 rounded-full">
-                                {category?.label}
+              <div className="space-y-2">
+                {filteredTasks.length === 0 ? (
+                  <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+                    <ListTodo className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <p>Keine Aufgaben vorhanden</p>
+                  </div>
+                ) : (
+                  filteredTasks.map(task => (
+                    <div
+                      key={task.id}
+                      onClick={() => {
+                        setSelectedTask(task);
+                        setShowTaskModal(true);
+                      }}
+                      className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-start gap-3 flex-1">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleTaskComplete(task.id);
+                            }}
+                            className={`w-5 h-5 rounded-full border-2 mt-0.5 ${
+                              task.completed
+                                ? 'bg-green-500 border-green-500'
+                                : 'border-gray-300 dark:border-gray-600'
+                            }`}
+                          >
+                            {task.completed && <CheckCircle2 className="h-4 w-4 text-white" />}
+                          </button>
+                          <div className="flex-1">
+                            <p className={`font-medium dark:text-white ${task.completed ? 'line-through opacity-50' : ''}`}>
+                              {task.title}
+                            </p>
+                            {task.description && (
+                              <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                                {task.description}
+                              </p>
+                            )}
+                            <div className="flex items-center gap-4 mt-2">
+                              <span className="text-xs px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded-full dark:text-gray-300">
+                                {categories.find(c => c.id === task.category)?.label || task.category}
                               </span>
-                              
                               {task.deadline && (
-                                <span className={`px-2 py-1 rounded-full flex items-center gap-1 ${
-                                  deadlineStatus === 'overdue' ? 'bg-red-100 text-red-700' :
-                                  deadlineStatus === 'today' ? 'bg-orange-100 text-orange-700' :
-                                  deadlineStatus === 'tomorrow' ? 'bg-yellow-100 text-yellow-700' :
-                                  'bg-gray-100 text-gray-600'
-                                }`}>
-                                  <Clock size={12} />
+                                <span className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
+                                  <Clock className="h-3 w-3" />
                                   {new Date(task.deadline).toLocaleDateString('de-DE')}
                                 </span>
                               )}
                             </div>
-                          </>
-                        )}
-                      </div>
-                      
-                      <div className="flex items-center gap-2">
-                        {isEditing ? (
-                          <>
-                            <button
-                              onClick={() => saveTaskEdits(task.id)}
-                              className="p-2 hover:bg-green-100 rounded-lg text-green-600 transition-colors"
-                              title="Speichern"
-                            >
-                              <Save size={16} />
-                            </button>
-                            <button
-                              onClick={cancelTaskEdits}
-                              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                              title="Abbrechen"
-                            >
-                              <X size={16} />
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            <button
-                              onClick={() => startEditingTask(task)}
-                              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                              title="Bearbeiten"
-                            >
-                              <Edit2 size={16} />
-                            </button>
-                            <button
-                              onClick={() => setExpandedTaskId(isExpanded ? null : task.id)}
-                              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                              title="Details anzeigen"
-                            >
-                              {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                            </button>
-                            <button
-                              onClick={() => deleteTask(task.id)}
-                              className="p-2 hover:bg-red-100 rounded-lg text-red-600 transition-colors"
-                              title="Löschen"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Progress Bar */}
-                    <div className="mb-3">
-                      <div className="flex justify-between text-xs text-gray-600 mb-1">
-                        <span>Fortschritt</span>
-                        <span>{task.progress}%</span>
-                      </div>
-                      <div className="bg-gray-200 rounded-full h-2 overflow-hidden">
-                        <div 
-                          className={`h-full transition-all duration-500 ${
-                            task.progress === 100 ? 'bg-green-500' :
-                            task.progress >= 75 ? 'bg-blue-500' :
-                            task.progress >= 50 ? 'bg-yellow-500' :
-                            task.progress >= 25 ? 'bg-orange-500' :
-                            'bg-gray-400'
-                          }`}
-                          style={{ width: `${task.progress}%` }}
-                        />
-                      </div>
-                      
-                      <div className="flex gap-1 mt-2">
-                        {[0, 25, 50, 75, 100].map(value => (
-                          <button
-                            key={value}
-                            onClick={() => updateProgress(task.id, value)}
-                            className={`flex-1 py-1 text-xs rounded transition-colors ${
-                              task.progress >= value 
-                                ? 'bg-purple-600 text-white' 
-                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                            }`}
-                          >
-                            {value}%
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* AI Suggestions */}
-                    {task.suggestions.length > 0 && (
-                      <div className="pt-3 border-t border-gray-200">
-                        <div className="flex items-center gap-1 text-xs text-gray-600 mb-2">
-                          <Sparkles size={12} />
-                          <span>KI-Vorschläge:</span>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          {task.suggestions.map((suggestion, idx) => (
-                            <button
-                              key={idx}
-                              onClick={() => executeSuggestion(task, suggestion)}
-                              disabled={isProcessing}
-                              className="px-3 py-1 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-lg text-xs flex items-center gap-1 transition-colors disabled:opacity-50"
-                            >
-                              <suggestion.icon size={14} />
-                              {suggestion.text}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Expanded Details */}
-                    {isExpanded && (
-                      <div className="mt-4 pt-4 border-t border-gray-200">
-                        {/* Description */}
-                        <div className="mb-4">
-                          <h4 className="text-sm font-medium text-gray-700 mb-2">Beschreibung</h4>
-                          <textarea
-                            value={taskDescriptions[task.id] || ''}
-                            onChange={(e) => updateTaskDescription(task.id, e.target.value)}
-                            placeholder="Beschreibung hinzufügen..."
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                            rows="3"
-                          />
-                        </div>
-
-                        {/* File Upload Area */}
-                        <div className="mb-4">
-                          <h4 className="text-sm font-medium text-gray-700 mb-2">Anhänge</h4>
-                          
-                          {/* Drop Zone */}
-                          <div
-                            onDragOver={handleDragOver}
-                            onDragLeave={handleDragLeave}
-                            onDrop={(e) => handleDrop(e, task.id)}
-                            className={`border-2 border-dashed rounded-lg p-4 text-center transition-colors ${
-                              isDragging ? 'border-purple-500 bg-purple-50' : 'border-gray-300'
-                            }`}
-                          >
-                            <input
-                              ref={fileInputRef}
-                              type="file"
-                              multiple
-                              onChange={(e) => handleFileUpload(task.id, e.target.files)}
-                              className="hidden"
-                              accept="image/*,.pdf,.doc,.docx,.txt"
-                            />
-                            
-                            <Upload className="mx-auto text-gray-400 mb-2" size={24} />
-                            <p className="text-sm text-gray-600 mb-2">
-                              Dateien hier ablegen oder{' '}
-                              <button
-                                onClick={() => fileInputRef.current?.click()}
-                                className="text-purple-600 hover:text-purple-700 font-medium"
-                              >
-                                durchsuchen
-                              </button>
-                            </p>
-                            <p className="text-xs text-gray-500">
-                              Unterstützt: Bilder, PDF, Word, Text
-                            </p>
                           </div>
-
-                          {/* Attachments List */}
-                          {taskAttachments[task.id]?.length > 0 && (
-                            <div className="mt-3 space-y-2">
-                              {taskAttachments[task.id].map((attachment) => (
-                                <div key={attachment.id} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
-                                  <div className="flex items-center gap-2">
-                                    {attachment.type === 'image' ? <ImageIcon size={16} className="text-blue-600" /> :
-                                     attachment.type === 'pdf' ? <FileText size={16} className="text-red-600" /> :
-                                     <File size={16} className="text-gray-600" />}
-                                    <div>
-                                      <p className="text-sm font-medium text-gray-800">{attachment.name}</p>
-                                      <p className="text-xs text-gray-500">{formatFileSize(attachment.size)}</p>
-                                    </div>
-                                  </div>
-                                  <button
-                                    onClick={() => removeAttachment(task.id, attachment.id)}
-                                    className="p-1 hover:bg-red-100 rounded text-red-600 transition-colors"
-                                  >
-                                    <X size={16} />
-                                  </button>
-                                </div>
-                              ))}
-                            </div>
-                          )}
                         </div>
+                        <ChevronRight className="h-5 w-5 text-gray-400" />
                       </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
-      </div>
-    );
-  };
-
-  const renderCalendar = () => {
-    return <CalendarView 
-      tasks={tasks} 
-      taskDescriptions={taskDescriptions}
-    />;
-  };
-
-  const renderAI = () => {
-    return (
-      <div className="p-6">
-        <h1 className="text-3xl font-bold text-gray-800 mb-6">KI-Assistent</h1>
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <div className="text-center py-12">
-            <Brain className="mx-auto text-gray-400 mb-4" size={48} />
-            <h2 className="text-xl font-semibold text-gray-800 mb-2">Claude Integration kommt bald!</h2>
-            <p className="text-gray-600 mb-4">
-              Der KI-Assistent wird in Kürze verfügbar sein und dir bei folgenden Aufgaben helfen:
-            </p>
-            <ul className="text-left max-w-md mx-auto space-y-2 text-gray-600">
-              <li className="flex items-start gap-2">
-                <span className="text-green-500">✓</span>
-                <span>E-Mails formulieren und versenden</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-green-500">✓</span>
-                <span>Termine intelligent planen</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-green-500">✓</span>
-                <span>Aufgaben automatisch priorisieren</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-green-500">✓</span>
-                <span>Dokumente erstellen und bearbeiten</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-green-500">✓</span>
-                <span>Komplexe Workflows automatisieren</span>
-              </li>
-            </ul>
-            
-            <div className="mt-8 p-4 bg-purple-50 rounded-lg">
-              <p className="text-sm text-purple-700">
-                <strong>Integration geplant mit:</strong><br />
-                Claude API + n8n Workflows + Gmail/Calendar APIs
-              </p>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
+          )}
 
-  const renderVoiceInput = () => {
-    return (
-      <div className="p-6">
-        <h1 className="text-3xl font-bold text-gray-800 mb-6">Voice Input</h1>
-        
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <h2 className="text-xl font-semibold text-gray-800 mb-4">🎤 Sprachsteuerung</h2>
-          
-          {/* Transcript Box */}
-          <div className="bg-gray-50 rounded-xl p-4 mb-4 min-h-[150px] max-h-[250px] overflow-y-auto relative">
-            {transcript && (
+          {/* Calendar View */}
+          {activeView === 'calendar' && (
+            <CalendarView tasks={tasks} isDarkMode={isDarkMode} />
+          )}
+        </main>
+      </div>
+
+      {/* Voice Input Modal */}
+      {showVoiceInput && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-md">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-semibold dark:text-white">Spracheingabe</h3>
               <button
-                onClick={clearTranscript}
-                className="absolute top-2 right-2 p-2 bg-red-100 hover:bg-red-200 rounded-lg text-red-600 transition-colors"
+                onClick={() => {
+                  setShowVoiceInput(false);
+                  setTranscript('');
+                  if (isRecording) stopRecording();
+                }}
+                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
               >
-                <Trash2 size={16} />
+                <X className="h-5 w-5 dark:text-gray-300" />
               </button>
-            )}
-            <p className="text-gray-800 pr-10 whitespace-pre-wrap">
-              {transcript || <span className="text-gray-400">Drücke das Mikrofon und sprich deinen Task...</span>}
-            </p>
-          </div>
-
-          {/* Control Buttons */}
-          <div className="flex justify-center gap-4 mb-4">
-            <button
-              onClick={isRecording ? stopRecording : startRecording}
-              disabled={isProcessing}
-              className={`p-4 rounded-full transition-all transform ${
-                isRecording 
-                  ? 'bg-red-500 hover:bg-red-600 animate-pulse scale-110' 
-                  : 'bg-purple-600 hover:bg-purple-700 hover:scale-105'
-              } text-white shadow-lg disabled:opacity-50`}
-            >
-              {isRecording ? <MicOff size={28} /> : <Mic size={28} />}
-            </button>
-
-            <button
-              onClick={createTaskFromTranscript}
-              disabled={isProcessing || !transcript.trim()}
-              className="p-4 rounded-full bg-green-600 hover:bg-green-700 text-white shadow-lg transition-all transform hover:scale-105 disabled:opacity-50"
-              title="Task erstellen"
-            >
-              {isProcessing ? <Loader2 size={28} className="animate-spin" /> : <Plus size={28} />}
-            </button>
-          </div>
-
-          {/* Status */}
-          {status && (
-            <div className="text-center">
-              <p className="text-sm bg-gray-100 rounded-full px-4 py-2 inline-block">
-                {status}
-              </p>
             </div>
-          )}
 
-          {/* Voice Tips */}
-          <div className="mt-6 p-4 bg-purple-50 rounded-xl">
-            <h3 className="text-sm font-semibold text-purple-900 mb-2">💡 Voice-Tipps:</h3>
-            <ul className="text-sm text-purple-700 space-y-1">
-              <li>• Sage "Morgen" oder "Heute" für automatische Deadlines</li>
-              <li>• Erwähne "Familie", "Business", "Loge" für automatische Kategorisierung</li>
-              <li>• Sage "E-Mail schreiben" oder "anrufen" für KI-Vorschläge</li>
-              <li>• Beispiel: "Morgen Mutter anrufen wegen Geburtstag"</li>
-            </ul>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  return (
-    <div className="min-h-screen bg-gray-50 flex">
-      {/* Sidebar */}
-      <div className={`${showSidebar ? 'w-64' : 'w-0'} transition-all duration-300 bg-gray-900 text-white overflow-hidden`}>
-        <div className="p-4">
-          <div className="flex items-center gap-2 mb-8">
-            <div className="w-8 h-8 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold">🚀</span>
-            </div>
-            <h1 className="text-xl font-bold">FlowLife</h1>
-          </div>
-
-          <nav className="space-y-2">
-            <button
-              onClick={() => setActiveView('dashboard')}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
-                activeView === 'dashboard' ? 'bg-purple-600' : 'hover:bg-gray-800'
-              }`}
-            >
-              <Home size={20} />
-              <span>Dashboard</span>
-            </button>
-
-            <button
-              onClick={() => setActiveView('tasks')}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
-                activeView === 'tasks' ? 'bg-purple-600' : 'hover:bg-gray-800'
-              }`}
-            >
-              <List size={20} />
-              <span>Aufgaben</span>
-              {tasks.length > 0 && (
-                <span className="ml-auto bg-gray-700 px-2 py-0.5 rounded-full text-xs">
-                  {tasks.length}
-                </span>
-              )}
-            </button>
-
-            <button
-              onClick={() => setActiveView('calendar')}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
-                activeView === 'calendar' ? 'bg-purple-600' : 'hover:bg-gray-800'
-              }`}
-            >
-              <CalendarDays size={20} />
-              <span>Google Kalender</span>
-              <span className="ml-auto text-xs">
-                <ChevronDown size={16} className="transform -rotate-90" />
-              </span>
-            </button>
-
-            <button
-              onClick={() => setActiveView('ai')}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
-                activeView === 'ai' ? 'bg-purple-600' : 'hover:bg-gray-800'
-              }`}
-            >
-              <Brain size={20} />
-              <span>KI-Assistent</span>
-            </button>
-
-            <button
-              onClick={() => setActiveView('voice')}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
-                activeView === 'voice' ? 'bg-purple-600' : 'hover:bg-gray-800'
-              }`}
-            >
-              <Mic size={20} />
-              <span>Voice Input</span>
-            </button>
-          </nav>
-        </div>
-      </div>
-
-      {/* Main Content */}
-      <div className="flex-1">
-        {/* Top Bar */}
-        <div className="bg-white border-b border-gray-200 px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
+            <div className="text-center py-8">
               <button
-                onClick={() => setShowSidebar(!showSidebar)}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                onClick={isRecording ? stopRecording : startRecording}
+                className={`w-24 h-24 rounded-full flex items-center justify-center transition-all ${
+                  isRecording
+                    ? 'bg-red-500 hover:bg-red-600 animate-pulse'
+                    : 'bg-blue-500 hover:bg-blue-600'
+                } text-white shadow-lg`}
               >
-                <Menu size={20} />
+                {isRecording ? <MicOff className="h-10 w-10" /> : <Mic className="h-10 w-10" />}
               </button>
               
-              <div className="text-sm text-gray-600">
-                {new Date().toLocaleDateString('de-DE', { 
-                  weekday: 'long', 
-                  year: 'numeric', 
-                  month: 'long', 
-                  day: 'numeric' 
-                })}
-              </div>
+              {transcript && (
+                <div className="mt-6 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                  <p className="text-gray-700 dark:text-gray-300">{transcript}</p>
+                </div>
+              )}
+              
+              {status && (
+                <p className="mt-4 text-sm text-gray-600 dark:text-gray-400">{status}</p>
+              )}
             </div>
 
-            {status && (
-              <div className="text-sm bg-purple-100 text-purple-700 px-3 py-1 rounded-full">
-                {status}
+            {transcript && !isRecording && (
+              <button
+                onClick={() => processVoiceInput(transcript)}
+                disabled={isProcessing}
+                className="w-full bg-gradient-to-r from-blue-500 to-purple-600 text-white py-3 rounded-lg font-medium hover:shadow-lg transition-shadow disabled:opacity-50"
+              >
+                {isProcessing ? (
+                  <span className="flex items-center justify-center">
+                    <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                    Verarbeite...
+                  </span>
+                ) : (
+                  'Aufgabe erstellen'
+                )}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Manual Task Input Modal */}
+      {showTaskInput && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-md">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-semibold dark:text-white">Neue Aufgabe</h3>
+              <button
+                onClick={() => {
+                  setShowTaskInput(false);
+                  setManualTaskText('');
+                  setSelectedDeadline('');
+                  setSelectedTaskCategory('Allgemein');
+                }}
+                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
+              >
+                <X className="h-5 w-5 dark:text-gray-300" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Was möchten Sie erledigen?
+                </label>
+                <input
+                  type="text"
+                  value={manualTaskText}
+                  onChange={(e) => setManualTaskText(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                  placeholder="Aufgabe eingeben..."
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Kategorie
+                </label>
+                <select
+                  value={selectedTaskCategory}
+                  onChange={(e) => setSelectedTaskCategory(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                >
+                  {categories.map(cat => (
+                    <option key={cat.id} value={cat.id}>
+                      {cat.label.split(' ')[1]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Fälligkeitsdatum (optional)
+                </label>
+                <input
+                  type="date"
+                  value={selectedDeadline}
+                  onChange={(e) => setSelectedDeadline(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                />
+              </div>
+
+              <button
+                onClick={addManualTask}
+                disabled={!manualTaskText.trim()}
+                className="w-full bg-gradient-to-r from-blue-500 to-purple-600 text-white py-3 rounded-lg font-medium hover:shadow-lg transition-shadow disabled:opacity-50"
+              >
+                Aufgabe hinzufügen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Task Detail Modal */}
+      {showTaskModal && selectedTask && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-start mb-4">
+              <h3 className="text-xl font-semibold dark:text-white">Aufgabendetails</h3>
+              <button
+                onClick={() => {
+                  setShowTaskModal(false);
+                  setSelectedTask(null);
+                  setEditingTask(null);
+                }}
+                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
+              >
+                <X className="h-5 w-5 dark:text-gray-300" />
+              </button>
+            </div>
+
+            {editingTask ? (
+              <div className="space-y-4">
+                <input
+                  type="text"
+                  value={editingTask.title}
+                  onChange={(e) => setEditingTask({...editingTask, title: e.target.value})}
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
+                />
+                <textarea
+                  value={editingTask.description || ''}
+                  onChange={(e) => setEditingTask({...editingTask, description: e.target.value})}
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
+                  rows="3"
+                  placeholder="Beschreibung..."
+                />
+                <select
+                  value={editingTask.category}
+                  onChange={(e) => setEditingTask({...editingTask, category: e.target.value})}
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
+                >
+                  {categories.map(cat => (
+                    <option key={cat.id} value={cat.id}>
+                      {cat.label.split(' ')[1]}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="date"
+                  value={editingTask.deadline || ''}
+                  onChange={(e) => setEditingTask({...editingTask, deadline: e.target.value})}
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={saveTaskEdit}
+                    className="flex-1 bg-green-600 text-white py-2 rounded-lg hover:bg-green-700"
+                  >
+                    <Save className="h-5 w-5 mx-auto" />
+                  </button>
+                  <button
+                    onClick={() => setEditingTask(null)}
+                    className="flex-1 bg-gray-600 text-white py-2 rounded-lg hover:bg-gray-700"
+                  >
+                    Abbrechen
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div>
+                  <h4 className="text-lg font-medium dark:text-white">{selectedTask.title}</h4>
+                  {selectedTask.description && (
+                    <p className="text-gray-600 dark:text-gray-400 mt-2">{selectedTask.description}</p>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <span className="px-3 py-1 bg-gray-100 dark:bg-gray-700 rounded-full text-sm dark:text-gray-300">
+                    {categories.find(c => c.id === selectedTask.category)?.label || selectedTask.category}
+                  </span>
+                  {selectedTask.deadline && (
+                    <span className="px-3 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-full text-sm">
+                      Fällig: {new Date(selectedTask.deadline).toLocaleDateString('de-DE')}
+                    </span>
+                  )}
+                  <span className={`px-3 py-1 rounded-full text-sm ${
+                    selectedTask.completed
+                      ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400'
+                      : 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400'
+                  }`}>
+                    {selectedTask.completed ? 'Erledigt' : 'Offen'}
+                  </span>
+                </div>
+
+                {/* Progress */}
+                <div>
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-sm font-medium dark:text-gray-300">Fortschritt</span>
+                    <span className="text-sm text-gray-600 dark:text-gray-400">{selectedTask.progress}%</span>
+                  </div>
+                  <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                    <div
+                      className="bg-gradient-to-r from-blue-500 to-purple-600 h-2 rounded-full transition-all"
+                      style={{ width: `${selectedTask.progress}%` }}
+                    />
+                  </div>
+                  <div className="flex gap-2 mt-3">
+                    {[0, 25, 50, 75, 100].map(value => (
+                      <button
+                        key={value}
+                        onClick={() => updateTaskProgress(selectedTask.id, value)}
+                        className={`flex-1 py-1 rounded text-sm ${
+                          selectedTask.progress === value
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                        }`}
+                      >
+                        {value}%
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex gap-2 pt-4 border-t dark:border-gray-700">
+                  <button
+                    onClick={() => toggleTaskComplete(selectedTask.id)}
+                    className={`flex-1 py-2 rounded-lg font-medium ${
+                      selectedTask.completed
+                        ? 'bg-amber-600 text-white hover:bg-amber-700'
+                        : 'bg-green-600 text-white hover:bg-green-700'
+                    }`}
+                  >
+                    {selectedTask.completed ? 'Wieder öffnen' : 'Als erledigt markieren'}
+                  </button>
+                  <button
+                    onClick={() => setEditingTask(selectedTask)}
+                    className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
+                  >
+                    <Edit2 className="h-5 w-5" />
+                  </button>
+                  <button
+                    onClick={() => deleteTask(selectedTask.id)}
+                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                  >
+                    <Trash2 className="h-5 w-5" />
+                  </button>
+                </div>
               </div>
             )}
           </div>
         </div>
-
-        {/* Content Area */}
-        {renderContent()}
-      </div>
+      )}
     </div>
   );
 }
