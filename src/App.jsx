@@ -4,7 +4,8 @@ import {
   Clock, Tag, AlertCircle, Mail, Phone, Calendar, Menu,
   ChevronDown, ChevronUp, Sparkles, Target, X, MessageSquare,
   CalendarDays, Brain, Home, List, Settings, Search, Filter,
-  Edit2, Save, FileText, Link, Upload, Image as ImageIcon
+  Edit2, Save, FileText, Link, Upload, Image as ImageIcon,
+  File, Paperclip, ExternalLink, AlertTriangle
 } from 'lucide-react';
 
 function App() {
@@ -33,12 +34,19 @@ function App() {
   // Task Details States
   const [expandedTaskId, setExpandedTaskId] = useState(null);
   const [editingTaskId, setEditingTaskId] = useState(null);
+  const [editingTaskDetails, setEditingTaskDetails] = useState(null);
   const [taskDescriptions, setTaskDescriptions] = useState({});
   const [taskAttachments, setTaskAttachments] = useState({});
   
   // UI States
   const [activeView, setActiveView] = useState('dashboard');
   const [showSidebar, setShowSidebar] = useState(true);
+  const [showCalendarSetup, setShowCalendarSetup] = useState(false);
+  const [googleCalendarId, setGoogleCalendarId] = useState('');
+  
+  // Upload States
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef(null);
 
   // Categories
   const categories = [
@@ -55,6 +63,7 @@ function App() {
     const savedTasks = localStorage.getItem('flowlife_tasks');
     const savedDescriptions = localStorage.getItem('flowlife_descriptions');
     const savedAttachments = localStorage.getItem('flowlife_attachments');
+    const savedCalendarId = localStorage.getItem('flowlife_calendar_id');
     
     if (savedTasks) {
       setTasks(JSON.parse(savedTasks));
@@ -64,6 +73,9 @@ function App() {
     }
     if (savedAttachments) {
       setTaskAttachments(JSON.parse(savedAttachments));
+    }
+    if (savedCalendarId) {
+      setGoogleCalendarId(savedCalendarId);
     }
 
     // Detect mobile device
@@ -88,6 +100,12 @@ function App() {
   useEffect(() => {
     localStorage.setItem('flowlife_attachments', JSON.stringify(taskAttachments));
   }, [taskAttachments]);
+
+  useEffect(() => {
+    if (googleCalendarId) {
+      localStorage.setItem('flowlife_calendar_id', googleCalendarId);
+    }
+  }, [googleCalendarId]);
 
   // AI-powered task parsing from transcript
   const parseTaskFromTranscript = (text) => {
@@ -215,6 +233,41 @@ function App() {
     }, 2000);
   };
 
+  // Update task
+  const updateTask = (taskId, updates) => {
+    setTasks(prev => prev.map(task => {
+      if (task.id === taskId) {
+        return { ...task, ...updates };
+      }
+      return task;
+    }));
+  };
+
+  // Start editing task details
+  const startEditingTask = (task) => {
+    setEditingTaskId(task.id);
+    setEditingTaskDetails({
+      title: task.title,
+      category: task.category,
+      deadline: task.deadline || ''
+    });
+  };
+
+  // Save task edits
+  const saveTaskEdits = (taskId) => {
+    if (editingTaskDetails) {
+      updateTask(taskId, editingTaskDetails);
+      setEditingTaskId(null);
+      setEditingTaskDetails(null);
+    }
+  };
+
+  // Cancel task edits
+  const cancelTaskEdits = () => {
+    setEditingTaskId(null);
+    setEditingTaskDetails(null);
+  };
+
   // Update task progress
   const updateProgress = (taskId, progress) => {
     setTasks(prev => prev.map(task => {
@@ -253,12 +306,63 @@ function App() {
     }));
   };
 
-  // Add attachment to task
-  const addTaskAttachment = (taskId, attachment) => {
+  // Handle file upload
+  const handleFileUpload = (taskId, files) => {
+    const newAttachments = [];
+    
+    Array.from(files).forEach(file => {
+      // Convert file to base64 for localStorage
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const attachment = {
+          id: Date.now().toString() + '_' + file.name,
+          name: file.name,
+          type: file.type.startsWith('image/') ? 'image' : 
+                file.type === 'application/pdf' ? 'pdf' : 'file',
+          size: file.size,
+          data: e.target.result, // Base64 data
+          uploadedAt: new Date().toISOString()
+        };
+        
+        setTaskAttachments(prev => ({
+          ...prev,
+          [taskId]: [...(prev[taskId] || []), attachment]
+        }));
+        
+        setStatus(`✅ ${file.name} hochgeladen`);
+        setTimeout(() => setStatus(''), 2000);
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  // Remove attachment
+  const removeAttachment = (taskId, attachmentId) => {
     setTaskAttachments(prev => ({
       ...prev,
-      [taskId]: [...(prev[taskId] || []), attachment]
+      [taskId]: prev[taskId].filter(att => att.id !== attachmentId)
     }));
+  };
+
+  // Handle drag and drop
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e, taskId) => {
+    e.preventDefault();
+    setIsDragging(false);
+    
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      handleFileUpload(taskId, files);
+    }
   };
 
   // Execute AI suggestion
@@ -299,16 +403,6 @@ function App() {
     if (deadline === today) return 'today';
     if (deadline === tomorrowStr) return 'tomorrow';
     return 'future';
-  };
-
-  // Get stats for dashboard
-  const getTaskStats = () => {
-    const total = tasks.length;
-    const completed = tasks.filter(t => t.progress === 100).length;
-    const today = tasks.filter(t => getDeadlineStatus(t.deadline) === 'today').length;
-    const overdue = tasks.filter(t => getDeadlineStatus(t.deadline) === 'overdue').length;
-    
-    return { total, completed, today, overdue };
   };
 
   // Voice recording functions
@@ -406,6 +500,15 @@ function App() {
     setStatus('');
   };
 
+  // Format file size
+  const formatFileSize = (bytes) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+  };
+
   // Render different views based on activeView
   const renderContent = () => {
     switch (activeView) {
@@ -425,38 +528,9 @@ function App() {
   };
 
   const renderDashboard = () => {
-    const stats = getTaskStats();
-    
     return (
       <div className="p-6">
         <h1 className="text-3xl font-bold text-gray-800 mb-6">Dashboard</h1>
-        
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-          <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
-            <div className="text-gray-500 text-sm mb-1">Gesamt</div>
-            <div className="text-2xl font-bold text-gray-800">{stats.total}</div>
-            <div className="text-xs text-gray-400">Aufgaben</div>
-          </div>
-          
-          <div className="bg-green-50 rounded-xl p-4 shadow-sm border border-green-200">
-            <div className="text-green-600 text-sm mb-1">Erledigt</div>
-            <div className="text-2xl font-bold text-green-700">{stats.completed}</div>
-            <div className="text-xs text-green-500">Abgeschlossen</div>
-          </div>
-          
-          <div className="bg-orange-50 rounded-xl p-4 shadow-sm border border-orange-200">
-            <div className="text-orange-600 text-sm mb-1">Heute</div>
-            <div className="text-2xl font-bold text-orange-700">{stats.today}</div>
-            <div className="text-xs text-orange-500">Fällig</div>
-          </div>
-          
-          <div className="bg-red-50 rounded-xl p-4 shadow-sm border border-red-200">
-            <div className="text-red-600 text-sm mb-1">Überfällig</div>
-            <div className="text-2xl font-bold text-red-700">{stats.overdue}</div>
-            <div className="text-xs text-red-500">Verspätet</div>
-          </div>
-        </div>
 
         {/* Schnell-Eingabe */}
         <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200 mb-6">
@@ -504,31 +578,53 @@ function App() {
 
         {/* Aktuelle Aufgaben */}
         <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
-          <h2 className="text-lg font-semibold text-gray-800 mb-4">Aktuelle Aufgaben</h2>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-lg font-semibold text-gray-800">Aktuelle Aufgaben</h2>
+            <button
+              onClick={() => setActiveView('tasks')}
+              className="text-purple-600 hover:text-purple-700 text-sm"
+            >
+              Alle anzeigen →
+            </button>
+          </div>
+          
           <div className="space-y-2">
-            {tasks.slice(0, 5).map(task => {
-              const category = categories.find(c => c.id === task.category);
-              const deadlineStatus = getDeadlineStatus(task.deadline);
-              
-              return (
-                <div key={task.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm">{category?.label}</span>
-                    <span className="font-medium text-gray-800">{task.title}</span>
-                    {task.deadline && (
-                      <span className={`text-xs px-2 py-1 rounded-full ${
-                        deadlineStatus === 'overdue' ? 'bg-red-100 text-red-700' :
-                        deadlineStatus === 'today' ? 'bg-orange-100 text-orange-700' :
-                        'bg-gray-100 text-gray-600'
-                      }`}>
-                        {new Date(task.deadline).toLocaleDateString('de-DE')}
-                      </span>
-                    )}
+            {tasks.length === 0 ? (
+              <p className="text-gray-500 text-center py-4">Noch keine Aufgaben vorhanden</p>
+            ) : (
+              tasks.slice(0, 5).map(task => {
+                const category = categories.find(c => c.id === task.category);
+                const deadlineStatus = getDeadlineStatus(task.deadline);
+                
+                return (
+                  <div key={task.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+                       onClick={() => {
+                         setActiveView('tasks');
+                         setExpandedTaskId(task.id);
+                       }}>
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm">{category?.label}</span>
+                      <span className="font-medium text-gray-800">{task.title}</span>
+                      {task.deadline && (
+                        <span className={`text-xs px-2 py-1 rounded-full ${
+                          deadlineStatus === 'overdue' ? 'bg-red-100 text-red-700' :
+                          deadlineStatus === 'today' ? 'bg-orange-100 text-orange-700' :
+                          'bg-gray-100 text-gray-600'
+                        }`}>
+                          {new Date(task.deadline).toLocaleDateString('de-DE')}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="w-20 bg-gray-200 rounded-full h-2">
+                        <div className="bg-purple-600 h-2 rounded-full transition-all" style={{ width: `${task.progress}%` }} />
+                      </div>
+                      <span className="text-sm text-gray-500 w-10 text-right">{task.progress}%</span>
+                    </div>
                   </div>
-                  <div className="text-sm text-gray-500">{task.progress}%</div>
-                </div>
-              );
-            })}
+                );
+              })
+            )}
           </div>
         </div>
       </div>
@@ -654,42 +750,99 @@ function App() {
                   <div className="p-4">
                     <div className="flex justify-between items-start mb-2">
                       <div className="flex-1">
-                        <h3 className="text-lg font-medium text-gray-800 mb-2">{task.title}</h3>
-                        <div className="flex items-center gap-2 text-sm">
-                          <span className="bg-gray-100 px-2 py-1 rounded-full">
-                            {category?.label}
-                          </span>
-                          
-                          {task.deadline && (
-                            <span className={`px-2 py-1 rounded-full flex items-center gap-1 ${
-                              deadlineStatus === 'overdue' ? 'bg-red-100 text-red-700' :
-                              deadlineStatus === 'today' ? 'bg-orange-100 text-orange-700' :
-                              deadlineStatus === 'tomorrow' ? 'bg-yellow-100 text-yellow-700' :
-                              'bg-gray-100 text-gray-600'
-                            }`}>
-                              <Clock size={12} />
-                              {new Date(task.deadline).toLocaleDateString('de-DE')}
-                            </span>
-                          )}
-                        </div>
+                        {isEditing ? (
+                          <div className="space-y-2">
+                            <input
+                              type="text"
+                              value={editingTaskDetails.title}
+                              onChange={(e) => setEditingTaskDetails({...editingTaskDetails, title: e.target.value})}
+                              className="w-full px-3 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            />
+                            <div className="flex gap-2">
+                              <select
+                                value={editingTaskDetails.category}
+                                onChange={(e) => setEditingTaskDetails({...editingTaskDetails, category: e.target.value})}
+                                className="flex-1 px-3 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-purple-500"
+                              >
+                                {categories.map(cat => (
+                                  <option key={cat.id} value={cat.id}>{cat.label}</option>
+                                ))}
+                              </select>
+                              <input
+                                type="date"
+                                value={editingTaskDetails.deadline}
+                                onChange={(e) => setEditingTaskDetails({...editingTaskDetails, deadline: e.target.value})}
+                                className="flex-1 px-3 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-purple-500"
+                              />
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <h3 className="text-lg font-medium text-gray-800 mb-2">{task.title}</h3>
+                            <div className="flex items-center gap-2 text-sm">
+                              <span className="bg-gray-100 px-2 py-1 rounded-full">
+                                {category?.label}
+                              </span>
+                              
+                              {task.deadline && (
+                                <span className={`px-2 py-1 rounded-full flex items-center gap-1 ${
+                                  deadlineStatus === 'overdue' ? 'bg-red-100 text-red-700' :
+                                  deadlineStatus === 'today' ? 'bg-orange-100 text-orange-700' :
+                                  deadlineStatus === 'tomorrow' ? 'bg-yellow-100 text-yellow-700' :
+                                  'bg-gray-100 text-gray-600'
+                                }`}>
+                                  <Clock size={12} />
+                                  {new Date(task.deadline).toLocaleDateString('de-DE')}
+                                </span>
+                              )}
+                            </div>
+                          </>
+                        )}
                       </div>
                       
                       <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => setExpandedTaskId(isExpanded ? null : task.id)}
-                          className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                          title="Details anzeigen"
-                        >
-                          {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                        </button>
-                        
-                        <button
-                          onClick={() => deleteTask(task.id)}
-                          className="p-2 hover:bg-red-100 rounded-lg text-red-600 transition-colors"
-                          title="Löschen"
-                        >
-                          <X size={16} />
-                        </button>
+                        {isEditing ? (
+                          <>
+                            <button
+                              onClick={() => saveTaskEdits(task.id)}
+                              className="p-2 hover:bg-green-100 rounded-lg text-green-600 transition-colors"
+                              title="Speichern"
+                            >
+                              <Save size={16} />
+                            </button>
+                            <button
+                              onClick={cancelTaskEdits}
+                              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                              title="Abbrechen"
+                            >
+                              <X size={16} />
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => startEditingTask(task)}
+                              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                              title="Bearbeiten"
+                            >
+                              <Edit2 size={16} />
+                            </button>
+                            <button
+                              onClick={() => setExpandedTaskId(isExpanded ? null : task.id)}
+                              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                              title="Details anzeigen"
+                            >
+                              {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                            </button>
+                            <button
+                              onClick={() => deleteTask(task.id)}
+                              className="p-2 hover:bg-red-100 rounded-lg text-red-600 transition-colors"
+                              title="Löschen"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
 
@@ -755,63 +908,79 @@ function App() {
                     {/* Expanded Details */}
                     {isExpanded && (
                       <div className="mt-4 pt-4 border-t border-gray-200">
-                        <div className="mb-3">
-                          <div className="flex justify-between items-center mb-2">
-                            <h4 className="text-sm font-medium text-gray-700">Beschreibung</h4>
-                            <button
-                              onClick={() => setEditingTaskId(isEditing ? null : task.id)}
-                              className="p-1 hover:bg-gray-100 rounded transition-colors"
-                            >
-                              {isEditing ? <Save size={14} /> : <Edit2 size={14} />}
-                            </button>
-                          </div>
-                          
-                          {isEditing ? (
-                            <textarea
-                              value={taskDescriptions[task.id] || ''}
-                              onChange={(e) => updateTaskDescription(task.id, e.target.value)}
-                              placeholder="Beschreibung hinzufügen..."
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                              rows="3"
-                            />
-                          ) : (
-                            <p className="text-sm text-gray-600">
-                              {taskDescriptions[task.id] || <span className="text-gray-400">Keine Beschreibung vorhanden</span>}
-                            </p>
-                          )}
+                        {/* Description */}
+                        <div className="mb-4">
+                          <h4 className="text-sm font-medium text-gray-700 mb-2">Beschreibung</h4>
+                          <textarea
+                            value={taskDescriptions[task.id] || ''}
+                            onChange={(e) => updateTaskDescription(task.id, e.target.value)}
+                            placeholder="Beschreibung hinzufügen..."
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            rows="3"
+                          />
                         </div>
 
-                        {/* Attachments */}
-                        <div className="mb-3">
+                        {/* File Upload Area */}
+                        <div className="mb-4">
                           <h4 className="text-sm font-medium text-gray-700 mb-2">Anhänge</h4>
-                          <div className="flex gap-2 flex-wrap">
-                            {taskAttachments[task.id]?.map((attachment, idx) => (
-                              <div key={idx} className="flex items-center gap-1 px-2 py-1 bg-gray-100 rounded text-xs">
-                                {attachment.type === 'link' ? <Link size={12} /> :
-                                 attachment.type === 'image' ? <ImageIcon size={12} /> :
-                                 <FileText size={12} />}
-                                <span>{attachment.name}</span>
-                              </div>
-                            ))}
+                          
+                          {/* Drop Zone */}
+                          <div
+                            onDragOver={handleDragOver}
+                            onDragLeave={handleDragLeave}
+                            onDrop={(e) => handleDrop(e, task.id)}
+                            className={`border-2 border-dashed rounded-lg p-4 text-center transition-colors ${
+                              isDragging ? 'border-purple-500 bg-purple-50' : 'border-gray-300'
+                            }`}
+                          >
+                            <input
+                              ref={fileInputRef}
+                              type="file"
+                              multiple
+                              onChange={(e) => handleFileUpload(task.id, e.target.files)}
+                              className="hidden"
+                              accept="image/*,.pdf,.doc,.docx,.txt"
+                            />
                             
-                            <button
-                              onClick={() => {
-                                // Placeholder für Upload-Funktion
-                                const url = prompt('Link hinzufügen:');
-                                if (url) {
-                                  addTaskAttachment(task.id, {
-                                    type: 'link',
-                                    name: url.slice(0, 30) + '...',
-                                    url: url
-                                  });
-                                }
-                              }}
-                              className="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-xs flex items-center gap-1 transition-colors"
-                            >
-                              <Plus size={12} />
-                              Anhang
-                            </button>
+                            <Upload className="mx-auto text-gray-400 mb-2" size={24} />
+                            <p className="text-sm text-gray-600 mb-2">
+                              Dateien hier ablegen oder{' '}
+                              <button
+                                onClick={() => fileInputRef.current?.click()}
+                                className="text-purple-600 hover:text-purple-700 font-medium"
+                              >
+                                durchsuchen
+                              </button>
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              Unterstützt: Bilder, PDF, Word, Text
+                            </p>
                           </div>
+
+                          {/* Attachments List */}
+                          {taskAttachments[task.id]?.length > 0 && (
+                            <div className="mt-3 space-y-2">
+                              {taskAttachments[task.id].map((attachment) => (
+                                <div key={attachment.id} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+                                  <div className="flex items-center gap-2">
+                                    {attachment.type === 'image' ? <ImageIcon size={16} className="text-blue-600" /> :
+                                     attachment.type === 'pdf' ? <FileText size={16} className="text-red-600" /> :
+                                     <File size={16} className="text-gray-600" />}
+                                    <div>
+                                      <p className="text-sm font-medium text-gray-800">{attachment.name}</p>
+                                      <p className="text-xs text-gray-500">{formatFileSize(attachment.size)}</p>
+                                    </div>
+                                  </div>
+                                  <button
+                                    onClick={() => removeAttachment(task.id, attachment.id)}
+                                    className="p-1 hover:bg-red-100 rounded text-red-600 transition-colors"
+                                  >
+                                    <X size={16} />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}
@@ -829,18 +998,89 @@ function App() {
     return (
       <div className="p-6">
         <h1 className="text-3xl font-bold text-gray-800 mb-6">Google Kalender</h1>
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-          <iframe
-            src="https://calendar.google.com/calendar/embed?src=primary&ctz=Europe%2FBerlin&mode=WEEK&showTitle=0&showNav=1&showDate=1&showPrint=0&showTabs=0&showCalendars=0&showTz=0&hl=de"
-            style={{ border: 0 }}
-            width="100%"
-            height="600"
-            frameBorder="0"
-            scrolling="no"
-            title="Google Kalender"
-            className="rounded-lg"
-          ></iframe>
-        </div>
+        
+        {!googleCalendarId || showCalendarSetup ? (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div className="mb-6">
+              <h2 className="text-xl font-semibold text-gray-800 mb-4">🔗 Google Kalender einrichten</h2>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                <p className="text-sm text-blue-800 mb-2">
+                  <strong>So bindest du deinen Google Kalender ein:</strong>
+                </p>
+                <ol className="list-decimal list-inside text-sm text-blue-700 space-y-1">
+                  <li>Öffne <a href="https://calendar.google.com" target="_blank" rel="noopener noreferrer" className="underline">Google Kalender</a></li>
+                  <li>Klicke auf das Zahnrad (⚙️) → "Einstellungen"</li>
+                  <li>Wähle deinen Kalender in der linken Spalte</li>
+                  <li>Scrolle zu "Kalender-ID" und kopiere sie</li>
+                  <li>Füge die ID unten ein (z.B. deine.email@gmail.com)</li>
+                </ol>
+              </div>
+              
+              <div className="space-y-3">
+                <input
+                  type="text"
+                  value={googleCalendarId}
+                  onChange={(e) => setGoogleCalendarId(e.target.value)}
+                  placeholder="Deine Google Kalender-ID (z.B. deine.email@gmail.com)"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+                
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => {
+                      if (googleCalendarId) {
+                        setShowCalendarSetup(false);
+                      }
+                    }}
+                    disabled={!googleCalendarId}
+                    className="px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg disabled:opacity-50 transition-colors"
+                  >
+                    Kalender einbinden
+                  </button>
+                  
+                  {googleCalendarId && (
+                    <button
+                      onClick={() => setShowCalendarSetup(false)}
+                      className="px-6 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg transition-colors"
+                    >
+                      Abbrechen
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+            <div className="flex justify-between items-center mb-4">
+              <p className="text-sm text-gray-600">Kalender-ID: {googleCalendarId}</p>
+              <button
+                onClick={() => setShowCalendarSetup(true)}
+                className="text-purple-600 hover:text-purple-700 text-sm"
+              >
+                Kalender ändern
+              </button>
+            </div>
+            
+            <iframe
+              src={`https://calendar.google.com/calendar/embed?src=${encodeURIComponent(googleCalendarId)}&ctz=Europe%2FBerlin&mode=WEEK&showTitle=0&showNav=1&showDate=1&showPrint=0&showTabs=0&showCalendars=0&showTz=0&hl=de`}
+              style={{ border: 0 }}
+              width="100%"
+              height="600"
+              frameBorder="0"
+              scrolling="no"
+              title="Google Kalender"
+              className="rounded-lg"
+            ></iframe>
+            
+            <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+              <p className="text-xs text-gray-600">
+                💡 <strong>Tipp:</strong> Änderungen im Google Kalender werden automatisch hier angezeigt. 
+                Du kannst direkt im Kalender oben Termine anlegen und bearbeiten.
+              </p>
+            </div>
+          </div>
+        )}
       </div>
     );
   };
@@ -878,6 +1118,13 @@ function App() {
                 <span>Komplexe Workflows automatisieren</span>
               </li>
             </ul>
+            
+            <div className="mt-8 p-4 bg-purple-50 rounded-lg">
+              <p className="text-sm text-purple-700">
+                <strong>Integration geplant mit:</strong><br />
+                Claude API + n8n Workflows + Gmail/Calendar APIs
+              </p>
+            </div>
           </div>
         </div>
       </div>
