@@ -3,7 +3,8 @@ import {
   Mic, MicOff, Send, Loader2, Trash2, Plus, CheckCircle2, 
   Clock, Tag, AlertCircle, Mail, Phone, Calendar, Menu,
   ChevronDown, ChevronUp, Sparkles, Target, X, MessageSquare,
-  CalendarDays, Brain, Home, List, Settings, Search, Filter
+  CalendarDays, Brain, Home, List, Settings, Search, Filter,
+  Edit2, Save, FileText, Link, Upload, Image as ImageIcon
 } from 'lucide-react';
 
 function App() {
@@ -21,7 +22,19 @@ function App() {
   const [showTaskInput, setShowTaskInput] = useState(false);
   const [manualTaskText, setManualTaskText] = useState('');
   const [selectedDeadline, setSelectedDeadline] = useState('');
+  const [selectedTaskCategory, setSelectedTaskCategory] = useState('sonstiges');
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Quick Add States (Dashboard)
+  const [quickTaskText, setQuickTaskText] = useState('');
+  const [quickTaskCategory, setQuickTaskCategory] = useState('');
+  const [quickTaskDeadline, setQuickTaskDeadline] = useState('');
+  
+  // Task Details States
+  const [expandedTaskId, setExpandedTaskId] = useState(null);
+  const [editingTaskId, setEditingTaskId] = useState(null);
+  const [taskDescriptions, setTaskDescriptions] = useState({});
+  const [taskAttachments, setTaskAttachments] = useState({});
   
   // UI States
   const [activeView, setActiveView] = useState('dashboard');
@@ -37,11 +50,20 @@ function App() {
     { id: 'sonstiges', label: '📌 Sonstiges', color: 'gray' }
   ];
 
-  // Load tasks from localStorage on mount
+  // Load data from localStorage on mount
   useEffect(() => {
     const savedTasks = localStorage.getItem('flowlife_tasks');
+    const savedDescriptions = localStorage.getItem('flowlife_descriptions');
+    const savedAttachments = localStorage.getItem('flowlife_attachments');
+    
     if (savedTasks) {
       setTasks(JSON.parse(savedTasks));
+    }
+    if (savedDescriptions) {
+      setTaskDescriptions(JSON.parse(savedDescriptions));
+    }
+    if (savedAttachments) {
+      setTaskAttachments(JSON.parse(savedAttachments));
     }
 
     // Detect mobile device
@@ -54,10 +76,18 @@ function App() {
     }
   }, []);
 
-  // Save tasks to localStorage whenever they change
+  // Save data to localStorage whenever they change
   useEffect(() => {
     localStorage.setItem('flowlife_tasks', JSON.stringify(tasks));
   }, [tasks]);
+
+  useEffect(() => {
+    localStorage.setItem('flowlife_descriptions', JSON.stringify(taskDescriptions));
+  }, [taskDescriptions]);
+
+  useEffect(() => {
+    localStorage.setItem('flowlife_attachments', JSON.stringify(taskAttachments));
+  }, [taskAttachments]);
 
   // AI-powered task parsing from transcript
   const parseTaskFromTranscript = (text) => {
@@ -131,21 +161,20 @@ function App() {
     setTasks(prev => [newTask, ...prev]);
     setTranscript('');
     setStatus('✅ Task erstellt: ' + newTask.title.slice(0, 30) + '...');
-    setActiveView('tasks');
     
     setTimeout(() => {
       setStatus('');
     }, 3000);
   };
 
-  // Create manual task
+  // Create manual task (Aufgaben-Seite)
   const createManualTask = () => {
     if (!manualTaskText.trim()) return;
     
     const newTask = {
       id: Date.now().toString(),
       title: manualTaskText.trim(),
-      category: 'sonstiges',
+      category: selectedTaskCategory,
       deadline: selectedDeadline || null,
       progress: 0,
       suggestions: [],
@@ -156,16 +185,19 @@ function App() {
     setTasks(prev => [newTask, ...prev]);
     setManualTaskText('');
     setSelectedDeadline('');
+    setSelectedTaskCategory('sonstiges');
     setShowTaskInput(false);
   };
 
-  // Quick task creation
-  const quickCreateTask = (text, category = 'sonstiges') => {
+  // Create quick task (Dashboard)
+  const createQuickTask = () => {
+    if (!quickTaskText.trim()) return;
+    
     const newTask = {
       id: Date.now().toString(),
-      title: text,
-      category,
-      deadline: null,
+      title: quickTaskText.trim(),
+      category: quickTaskCategory || 'sonstiges',
+      deadline: quickTaskDeadline || null,
       progress: 0,
       suggestions: [],
       created_at: new Date().toISOString(),
@@ -173,8 +205,14 @@ function App() {
     };
     
     setTasks(prev => [newTask, ...prev]);
-    setStatus('✅ Task hinzugefügt');
-    setTimeout(() => setStatus(''), 2000);
+    setQuickTaskText('');
+    setQuickTaskCategory('');
+    setQuickTaskDeadline('');
+    setStatus('✅ Aufgabe hinzugefügt!');
+    
+    setTimeout(() => {
+      setStatus('');
+    }, 2000);
   };
 
   // Update task progress
@@ -194,6 +232,33 @@ function App() {
   // Delete task
   const deleteTask = (taskId) => {
     setTasks(prev => prev.filter(task => task.id !== taskId));
+    // Also clean up descriptions and attachments
+    setTaskDescriptions(prev => {
+      const newDescriptions = { ...prev };
+      delete newDescriptions[taskId];
+      return newDescriptions;
+    });
+    setTaskAttachments(prev => {
+      const newAttachments = { ...prev };
+      delete newAttachments[taskId];
+      return newAttachments;
+    });
+  };
+
+  // Update task description
+  const updateTaskDescription = (taskId, description) => {
+    setTaskDescriptions(prev => ({
+      ...prev,
+      [taskId]: description
+    }));
+  };
+
+  // Add attachment to task
+  const addTaskAttachment = (taskId, attachment) => {
+    setTaskAttachments(prev => ({
+      ...prev,
+      [taskId]: [...(prev[taskId] || []), attachment]
+    }));
   };
 
   // Execute AI suggestion
@@ -212,25 +277,14 @@ function App() {
     }, 2000);
   };
 
-  // Filter tasks
+  // Filter tasks based on search and category
   const filteredTasks = tasks.filter(task => {
     const matchesCategory = selectedCategory === 'alle' || task.category === selectedCategory;
-    const matchesSearch = !searchQuery || task.title.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSearch = !searchQuery || 
+      task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (taskDescriptions[task.id] && taskDescriptions[task.id].toLowerCase().includes(searchQuery.toLowerCase()));
     return matchesCategory && matchesSearch;
   });
-
-  // Get stats
-  const getStats = () => {
-    const total = tasks.length;
-    const completed = tasks.filter(t => t.progress === 100).length;
-    const today = new Date().toISOString().split('T')[0];
-    const overdue = tasks.filter(t => t.deadline && t.deadline < today && t.progress < 100).length;
-    const todayTasks = tasks.filter(t => t.deadline === today).length;
-    
-    return { total, completed, overdue, todayTasks };
-  };
-
-  const stats = getStats();
 
   // Get deadline status
   const getDeadlineStatus = (deadline) => {
@@ -245,6 +299,16 @@ function App() {
     if (deadline === today) return 'today';
     if (deadline === tomorrowStr) return 'tomorrow';
     return 'future';
+  };
+
+  // Get stats for dashboard
+  const getTaskStats = () => {
+    const total = tasks.length;
+    const completed = tasks.filter(t => t.progress === 100).length;
+    const today = tasks.filter(t => getDeadlineStatus(t.deadline) === 'today').length;
+    const overdue = tasks.filter(t => getDeadlineStatus(t.deadline) === 'overdue').length;
+    
+    return { total, completed, today, overdue };
   };
 
   // Voice recording functions
@@ -299,13 +363,25 @@ function App() {
 
     recognitionRef.current.onerror = (event) => {
       console.error('Speech recognition error', event);
-      setStatus('');
+      if (event.error === 'no-speech') {
+        setStatus('🔇 Keine Sprache erkannt');
+      } else if (event.error === 'not-allowed') {
+        setStatus('🎤 Bitte Mikrofon-Zugriff erlauben');
+      } else if (event.error === 'aborted') {
+        setStatus('');
+      } else {
+        setStatus('❌ Fehler: ' + event.error);
+      }
       setIsRecording(false);
     };
 
     recognitionRef.current.onend = () => {
       setIsRecording(false);
-      setStatus('');
+      if (isMobile && transcript.length < 100) {
+        setStatus('👆 Tippe erneut zum Weitersprechen');
+      } else {
+        setStatus('');
+      }
     };
 
     try {
@@ -330,537 +406,662 @@ function App() {
     setStatus('');
   };
 
-  // Sidebar Component
-  const Sidebar = () => (
-    <div className={`${showSidebar ? 'w-64' : 'w-0'} transition-all duration-300 bg-gray-900 text-white overflow-hidden flex-shrink-0`}>
-      <div className="p-4 border-b border-gray-800">
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <span className="text-3xl">🚀</span> FlowLife
-        </h1>
-      </div>
-      
-      <nav className="p-4">
-        <button
-          onClick={() => setActiveView('dashboard')}
-          className={`w-full text-left p-3 rounded-lg mb-2 flex items-center gap-3 transition-colors ${
-            activeView === 'dashboard' ? 'bg-purple-600' : 'hover:bg-gray-800'
-          }`}
-        >
-          <Home size={20} />
-          Dashboard
-        </button>
-        
-        <button
-          onClick={() => setActiveView('tasks')}
-          className={`w-full text-left p-3 rounded-lg mb-2 flex items-center gap-3 transition-colors ${
-            activeView === 'tasks' ? 'bg-purple-600' : 'hover:bg-gray-800'
-          }`}
-        >
-          <List size={20} />
-          Aufgaben
-          {stats.total > 0 && (
-            <span className="ml-auto bg-purple-500 px-2 py-1 rounded-full text-xs">
-              {stats.total}
-            </span>
-          )}
-        </button>
-        
-        <a
-          href="https://calendar.google.com"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="w-full text-left p-3 rounded-lg mb-2 flex items-center gap-3 hover:bg-gray-800 transition-colors"
-        >
-          <CalendarDays size={20} />
-          Google Kalender
-          <span className="ml-auto">↗</span>
-        </a>
-        
-        <button
-          onClick={() => {
-            setActiveView('assistant');
-            // Später: Claude Chat öffnen
-          }}
-          className={`w-full text-left p-3 rounded-lg mb-2 flex items-center gap-3 transition-colors ${
-            activeView === 'assistant' ? 'bg-purple-600' : 'hover:bg-gray-800'
-          }`}
-        >
-          <Brain size={20} />
-          KI-Assistent
-        </button>
-        
-        <button
-          onClick={() => setActiveView('voice')}
-          className={`w-full text-left p-3 rounded-lg mb-2 flex items-center gap-3 transition-colors ${
-            activeView === 'voice' ? 'bg-purple-600' : 'hover:bg-gray-800'
-          }`}
-        >
-          <Mic size={20} />
-          Voice Input
-        </button>
-      </nav>
-      
-      <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-800">
-        <div className="text-xs text-gray-400">
-          <p>📊 {stats.completed}/{stats.total} erledigt</p>
-          {stats.overdue > 0 && (
-            <p className="text-red-400 mt-1">⚠️ {stats.overdue} überfällig</p>
-          )}
-        </div>
-      </div>
-    </div>
-  );
+  // Render different views based on activeView
+  const renderContent = () => {
+    switch (activeView) {
+      case 'dashboard':
+        return renderDashboard();
+      case 'tasks':
+        return renderTasks();
+      case 'calendar':
+        return renderCalendar();
+      case 'ai':
+        return renderAI();
+      case 'voice':
+        return renderVoiceInput();
+      default:
+        return renderDashboard();
+    }
+  };
 
-  // Dashboard View
-  const DashboardView = () => (
-    <div className="p-6">
-      <h2 className="text-3xl font-bold mb-6 text-gray-800">Dashboard</h2>
-      
-      {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <div className="bg-white rounded-xl shadow-lg p-6">
-          <div className="text-sm text-gray-500 mb-1">Gesamt</div>
-          <div className="text-3xl font-bold text-gray-800">{stats.total}</div>
-          <div className="text-xs text-gray-400">Aufgaben</div>
-        </div>
+  const renderDashboard = () => {
+    const stats = getTaskStats();
+    
+    return (
+      <div className="p-6">
+        <h1 className="text-3xl font-bold text-gray-800 mb-6">Dashboard</h1>
         
-        <div className="bg-green-50 rounded-xl shadow-lg p-6">
-          <div className="text-sm text-green-600 mb-1">Erledigt</div>
-          <div className="text-3xl font-bold text-green-700">{stats.completed}</div>
-          <div className="text-xs text-green-500">Abgeschlossen</div>
-        </div>
-        
-        <div className="bg-orange-50 rounded-xl shadow-lg p-6">
-          <div className="text-sm text-orange-600 mb-1">Heute</div>
-          <div className="text-3xl font-bold text-orange-700">{stats.todayTasks}</div>
-          <div className="text-xs text-orange-500">Fällig</div>
-        </div>
-        
-        <div className="bg-red-50 rounded-xl shadow-lg p-6">
-          <div className="text-sm text-red-600 mb-1">Überfällig</div>
-          <div className="text-3xl font-bold text-red-700">{stats.overdue}</div>
-          <div className="text-xs text-red-500">Verspätet</div>
-        </div>
-      </div>
-      
-      {/* Quick Add */}
-      <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
-        <h3 className="text-lg font-semibold mb-4">Schnell-Eingabe</h3>
-        <div className="flex gap-2">
-          <input
-            type="text"
-            placeholder="Neue Aufgabe hinzufügen..."
-            className="flex-1 px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-            onKeyPress={(e) => {
-              if (e.key === 'Enter' && e.target.value.trim()) {
-                quickCreateTask(e.target.value);
-                e.target.value = '';
-              }
-            }}
-          />
-          <button
-            onClick={startRecording}
-            className={`p-2 rounded-lg transition-colors ${
-              isRecording ? 'bg-red-500 text-white' : 'bg-purple-500 text-white hover:bg-purple-600'
-            }`}
-          >
-            <Mic size={20} />
-          </button>
-        </div>
-        {transcript && (
-          <div className="mt-2 p-2 bg-gray-100 rounded text-sm">
-            {transcript}
-            <button
-              onClick={createTaskFromTranscript}
-              className="ml-2 text-purple-600 hover:text-purple-700"
-            >
-              → Task erstellen
-            </button>
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+          <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
+            <div className="text-gray-500 text-sm mb-1">Gesamt</div>
+            <div className="text-2xl font-bold text-gray-800">{stats.total}</div>
+            <div className="text-xs text-gray-400">Aufgaben</div>
           </div>
-        )}
-      </div>
-      
-      {/* Recent Tasks */}
-      <div className="bg-white rounded-xl shadow-lg p-6">
-        <h3 className="text-lg font-semibold mb-4">Aktuelle Aufgaben</h3>
-        <div className="space-y-2">
-          {tasks.slice(0, 5).map(task => (
-            <div key={task.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-              <div className={`w-2 h-2 rounded-full ${
-                task.progress === 100 ? 'bg-green-500' :
-                getDeadlineStatus(task.deadline) === 'overdue' ? 'bg-red-500' :
-                getDeadlineStatus(task.deadline) === 'today' ? 'bg-orange-500' :
-                'bg-gray-400'
-              }`} />
-              <span className="flex-1">{task.title}</span>
-              <span className="text-xs text-gray-500">{task.progress}%</span>
-            </div>
-          ))}
-          {tasks.length === 0 && (
-            <p className="text-gray-400 text-center py-4">Noch keine Aufgaben</p>
-          )}
+          
+          <div className="bg-green-50 rounded-xl p-4 shadow-sm border border-green-200">
+            <div className="text-green-600 text-sm mb-1">Erledigt</div>
+            <div className="text-2xl font-bold text-green-700">{stats.completed}</div>
+            <div className="text-xs text-green-500">Abgeschlossen</div>
+          </div>
+          
+          <div className="bg-orange-50 rounded-xl p-4 shadow-sm border border-orange-200">
+            <div className="text-orange-600 text-sm mb-1">Heute</div>
+            <div className="text-2xl font-bold text-orange-700">{stats.today}</div>
+            <div className="text-xs text-orange-500">Fällig</div>
+          </div>
+          
+          <div className="bg-red-50 rounded-xl p-4 shadow-sm border border-red-200">
+            <div className="text-red-600 text-sm mb-1">Überfällig</div>
+            <div className="text-2xl font-bold text-red-700">{stats.overdue}</div>
+            <div className="text-xs text-red-500">Verspätet</div>
+          </div>
         </div>
-        {tasks.length > 5 && (
-          <button
-            onClick={() => setActiveView('tasks')}
-            className="w-full mt-4 text-purple-600 hover:text-purple-700 text-sm"
-          >
-            Alle {tasks.length} Aufgaben anzeigen →
-          </button>
-        )}
-      </div>
-    </div>
-  );
 
-  // Tasks View (existing task management)
-  const TasksView = () => (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-3xl font-bold text-gray-800">Aufgaben</h2>
-        <button
-          onClick={() => setShowTaskInput(!showTaskInput)}
-          className="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors"
-        >
-          <Plus size={20} className="inline mr-2" />
-          Neue Aufgabe
-        </button>
-      </div>
-
-      {/* Search Bar */}
-      <div className="bg-white rounded-xl shadow-lg p-4 mb-6">
-        <div className="flex gap-2">
-          <div className="relative flex-1">
-            <Search size={20} className="absolute left-3 top-3 text-gray-400" />
+        {/* Schnell-Eingabe */}
+        <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200 mb-6">
+          <h2 className="text-lg font-semibold text-gray-800 mb-4">Schnell-Eingabe</h2>
+          <div className="space-y-3">
             <input
               type="text"
-              placeholder="Aufgaben durchsuchen..."
+              value={quickTaskText}
+              onChange={(e) => setQuickTaskText(e.target.value)}
+              placeholder="Neue Aufgabe hinzufügen..."
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+              onKeyPress={(e) => e.key === 'Enter' && createQuickTask()}
+            />
+            
+            <div className="flex gap-3">
+              <select
+                value={quickTaskCategory}
+                onChange={(e) => setQuickTaskCategory(e.target.value)}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+              >
+                <option value="">Kategorie (optional)</option>
+                {categories.map(cat => (
+                  <option key={cat.id} value={cat.id}>{cat.label}</option>
+                ))}
+              </select>
+              
+              <input
+                type="date"
+                value={quickTaskDeadline}
+                onChange={(e) => setQuickTaskDeadline(e.target.value)}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                placeholder="Datum (optional)"
+              />
+              
+              <button
+                onClick={createQuickTask}
+                disabled={!quickTaskText.trim()}
+                className="px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                Hinzufügen
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Aktuelle Aufgaben */}
+        <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
+          <h2 className="text-lg font-semibold text-gray-800 mb-4">Aktuelle Aufgaben</h2>
+          <div className="space-y-2">
+            {tasks.slice(0, 5).map(task => {
+              const category = categories.find(c => c.id === task.category);
+              const deadlineStatus = getDeadlineStatus(task.deadline);
+              
+              return (
+                <div key={task.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm">{category?.label}</span>
+                    <span className="font-medium text-gray-800">{task.title}</span>
+                    {task.deadline && (
+                      <span className={`text-xs px-2 py-1 rounded-full ${
+                        deadlineStatus === 'overdue' ? 'bg-red-100 text-red-700' :
+                        deadlineStatus === 'today' ? 'bg-orange-100 text-orange-700' :
+                        'bg-gray-100 text-gray-600'
+                      }`}>
+                        {new Date(task.deadline).toLocaleDateString('de-DE')}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-sm text-gray-500">{task.progress}%</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderTasks = () => {
+    return (
+      <div className="p-6">
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-3xl font-bold text-gray-800">Aufgaben</h1>
+          <button
+            onClick={() => setShowTaskInput(!showTaskInput)}
+            className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg flex items-center gap-2 transition-colors"
+          >
+            <Plus size={20} />
+            Neue Aufgabe
+          </button>
+        </div>
+
+        {/* Search Bar */}
+        <div className="mb-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+            <input
+              type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+              placeholder="Aufgaben durchsuchen..."
+              className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
             />
           </div>
         </div>
-      </div>
 
-      {/* Manual Task Input */}
-      {showTaskInput && (
-        <div className="bg-white rounded-xl shadow-lg p-4 mb-6">
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={manualTaskText}
-              onChange={(e) => setManualTaskText(e.target.value)}
-              placeholder="Aufgabe eingeben..."
-              className="flex-1 px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-              onKeyPress={(e) => e.key === 'Enter' && createManualTask()}
-            />
-            <input
-              type="date"
-              value={selectedDeadline}
-              onChange={(e) => setSelectedDeadline(e.target.value)}
-              className="px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-            />
-            <button
-              onClick={createManualTask}
-              disabled={!manualTaskText.trim()}
-              className="px-6 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50"
-            >
-              Hinzufügen
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Category Filter */}
-      <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
-        <button
-          onClick={() => setSelectedCategory('alle')}
-          className={`px-4 py-2 rounded-lg whitespace-nowrap transition-colors ${
-            selectedCategory === 'alle' 
-              ? 'bg-purple-500 text-white' 
-              : 'bg-white text-gray-700 hover:bg-gray-100'
-          }`}
-        >
-          Alle ({tasks.length})
-        </button>
-        {categories.map(cat => {
-          const count = tasks.filter(t => t.category === cat.id).length;
-          return (
-            <button
-              key={cat.id}
-              onClick={() => setSelectedCategory(cat.id)}
-              className={`px-4 py-2 rounded-lg whitespace-nowrap transition-colors ${
-                selectedCategory === cat.id 
-                  ? 'bg-purple-500 text-white' 
-                  : 'bg-white text-gray-700 hover:bg-gray-100'
-              }`}
-            >
-              {cat.label} ({count})
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Task List */}
-      <div className="space-y-3">
-        {filteredTasks.length === 0 ? (
-          <div className="bg-white rounded-xl shadow-lg p-12 text-center">
-            <p className="text-gray-400">
-              {searchQuery 
-                ? 'Keine Aufgaben gefunden' 
-                : selectedCategory === 'alle' 
-                  ? 'Noch keine Aufgaben. Klicke auf "Neue Aufgabe" um zu beginnen!' 
-                  : 'Keine Aufgaben in dieser Kategorie.'}
-            </p>
-          </div>
-        ) : (
-          filteredTasks.map(task => {
-            const deadlineStatus = getDeadlineStatus(task.deadline);
-            const category = categories.find(c => c.id === task.category);
-            
-            return (
-              <div key={task.id} className="bg-white rounded-xl shadow-lg p-4 hover:shadow-xl transition-shadow">
-                <div className="flex justify-between items-start mb-3">
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-gray-800 mb-2">{task.title}</h3>
-                    <div className="flex items-center gap-2 text-sm">
-                      <span className="bg-gray-100 px-2 py-1 rounded">
-                        {category?.label}
-                      </span>
-                      
-                      {task.deadline && (
-                        <span className={`px-2 py-1 rounded flex items-center gap-1 ${
-                          deadlineStatus === 'overdue' ? 'bg-red-100 text-red-700' :
-                          deadlineStatus === 'today' ? 'bg-orange-100 text-orange-700' :
-                          deadlineStatus === 'tomorrow' ? 'bg-yellow-100 text-yellow-700' :
-                          'bg-gray-100 text-gray-700'
-                        }`}>
-                          <Clock size={14} />
-                          {new Date(task.deadline).toLocaleDateString('de-DE')}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  
-                  <button
-                    onClick={() => deleteTask(task.id)}
-                    className="p-2 hover:bg-red-100 rounded-lg text-red-600 transition-colors"
-                  >
-                    <X size={18} />
-                  </button>
-                </div>
-
-                {/* Progress Bar */}
-                <div className="mb-3">
-                  <div className="flex justify-between text-sm text-gray-600 mb-1">
-                    <span>Fortschritt</span>
-                    <span>{task.progress}%</span>
-                  </div>
-                  <div className="bg-gray-200 rounded-full h-2 overflow-hidden">
-                    <div 
-                      className={`h-full transition-all duration-500 ${
-                        task.progress === 100 ? 'bg-green-500' :
-                        task.progress >= 75 ? 'bg-blue-500' :
-                        task.progress >= 50 ? 'bg-yellow-500' :
-                        task.progress >= 25 ? 'bg-orange-500' :
-                        'bg-gray-400'
-                      }`}
-                      style={{ width: `${task.progress}%` }}
-                    />
-                  </div>
-                  
-                  <div className="flex gap-1 mt-2">
-                    {[0, 25, 50, 75, 100].map(value => (
-                      <button
-                        key={value}
-                        onClick={() => updateProgress(task.id, value)}
-                        className={`flex-1 py-1 text-xs rounded transition-colors ${
-                          task.progress >= value 
-                            ? 'bg-purple-500 text-white' 
-                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                        }`}
-                      >
-                        {value}%
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* AI Suggestions */}
-                {task.suggestions.length > 0 && (
-                  <div className="pt-3 border-t">
-                    <div className="flex items-center gap-1 text-sm text-gray-600 mb-2">
-                      <Sparkles size={14} />
-                      <span>KI-Vorschläge:</span>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {task.suggestions.map((suggestion, idx) => (
-                        <button
-                          key={idx}
-                          onClick={() => executeSuggestion(task, suggestion)}
-                          disabled={isProcessing}
-                          className="px-3 py-1 bg-purple-100 hover:bg-purple-200 rounded-lg text-purple-700 text-sm flex items-center gap-1 transition-colors disabled:opacity-50"
-                        >
-                          <suggestion.icon size={14} />
-                          {suggestion.text}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
+        {/* Add Task Form */}
+        {showTaskInput && (
+          <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200 mb-4">
+            <div className="space-y-3">
+              <input
+                type="text"
+                value={manualTaskText}
+                onChange={(e) => setManualTaskText(e.target.value)}
+                placeholder="Aufgabe eingeben..."
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                onKeyPress={(e) => e.key === 'Enter' && createManualTask()}
+              />
+              
+              <div className="flex gap-3">
+                <select
+                  value={selectedTaskCategory}
+                  onChange={(e) => setSelectedTaskCategory(e.target.value)}
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                >
+                  {categories.map(cat => (
+                    <option key={cat.id} value={cat.id}>{cat.label}</option>
+                  ))}
+                </select>
+                
+                <input
+                  type="date"
+                  value={selectedDeadline}
+                  onChange={(e) => setSelectedDeadline(e.target.value)}
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+                
+                <button
+                  onClick={createManualTask}
+                  disabled={!manualTaskText.trim()}
+                  className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg disabled:opacity-50 transition-colors"
+                >
+                  Hinzufügen
+                </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Category Filter */}
+        <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
+          <button
+            onClick={() => setSelectedCategory('alle')}
+            className={`px-4 py-2 rounded-lg whitespace-nowrap transition-colors ${
+              selectedCategory === 'alle' 
+                ? 'bg-purple-600 text-white' 
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            Alle ({tasks.length})
+          </button>
+          {categories.map(cat => {
+            const count = tasks.filter(t => t.category === cat.id).length;
+            return (
+              <button
+                key={cat.id}
+                onClick={() => setSelectedCategory(cat.id)}
+                className={`px-4 py-2 rounded-lg whitespace-nowrap transition-colors ${
+                  selectedCategory === cat.id 
+                    ? 'bg-purple-600 text-white' 
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                {cat.label} ({count})
+              </button>
             );
-          })
-        )}
-      </div>
-    </div>
-  );
-
-  // Voice View
-  const VoiceView = () => (
-    <div className="p-6 max-w-4xl mx-auto">
-      <h2 className="text-3xl font-bold mb-6 text-gray-800">Voice Input</h2>
-      
-      <div className="bg-white rounded-xl shadow-lg p-8">
-        <div className="text-center mb-6">
-          <p className="text-gray-600 mb-4">
-            Drücke das Mikrofon und sprich deine Aufgabe
-          </p>
+          })}
         </div>
-        
-        {/* Transcript Box */}
-        <div className="bg-gray-50 rounded-xl p-6 mb-6 min-h-[150px] relative">
-          {transcript && (
-            <button
-              onClick={clearTranscript}
-              className="absolute top-3 right-3 p-2 bg-red-100 hover:bg-red-200 rounded-lg text-red-600 transition-colors"
-            >
-              <Trash2 size={16} />
-            </button>
+
+        {/* Task List */}
+        <div className="space-y-3">
+          {filteredTasks.length === 0 ? (
+            <div className="text-center py-12 text-gray-500">
+              {searchQuery ? 'Keine Aufgaben gefunden' : 'Noch keine Aufgaben vorhanden'}
+            </div>
+          ) : (
+            filteredTasks.map(task => {
+              const deadlineStatus = getDeadlineStatus(task.deadline);
+              const category = categories.find(c => c.id === task.category);
+              const isExpanded = expandedTaskId === task.id;
+              const isEditing = editingTaskId === task.id;
+              
+              return (
+                <div key={task.id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                  <div className="p-4">
+                    <div className="flex justify-between items-start mb-2">
+                      <div className="flex-1">
+                        <h3 className="text-lg font-medium text-gray-800 mb-2">{task.title}</h3>
+                        <div className="flex items-center gap-2 text-sm">
+                          <span className="bg-gray-100 px-2 py-1 rounded-full">
+                            {category?.label}
+                          </span>
+                          
+                          {task.deadline && (
+                            <span className={`px-2 py-1 rounded-full flex items-center gap-1 ${
+                              deadlineStatus === 'overdue' ? 'bg-red-100 text-red-700' :
+                              deadlineStatus === 'today' ? 'bg-orange-100 text-orange-700' :
+                              deadlineStatus === 'tomorrow' ? 'bg-yellow-100 text-yellow-700' :
+                              'bg-gray-100 text-gray-600'
+                            }`}>
+                              <Clock size={12} />
+                              {new Date(task.deadline).toLocaleDateString('de-DE')}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setExpandedTaskId(isExpanded ? null : task.id)}
+                          className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                          title="Details anzeigen"
+                        >
+                          {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                        </button>
+                        
+                        <button
+                          onClick={() => deleteTask(task.id)}
+                          className="p-2 hover:bg-red-100 rounded-lg text-red-600 transition-colors"
+                          title="Löschen"
+                        >
+                          <X size={16} />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Progress Bar */}
+                    <div className="mb-3">
+                      <div className="flex justify-between text-xs text-gray-600 mb-1">
+                        <span>Fortschritt</span>
+                        <span>{task.progress}%</span>
+                      </div>
+                      <div className="bg-gray-200 rounded-full h-2 overflow-hidden">
+                        <div 
+                          className={`h-full transition-all duration-500 ${
+                            task.progress === 100 ? 'bg-green-500' :
+                            task.progress >= 75 ? 'bg-blue-500' :
+                            task.progress >= 50 ? 'bg-yellow-500' :
+                            task.progress >= 25 ? 'bg-orange-500' :
+                            'bg-gray-400'
+                          }`}
+                          style={{ width: `${task.progress}%` }}
+                        />
+                      </div>
+                      
+                      <div className="flex gap-1 mt-2">
+                        {[0, 25, 50, 75, 100].map(value => (
+                          <button
+                            key={value}
+                            onClick={() => updateProgress(task.id, value)}
+                            className={`flex-1 py-1 text-xs rounded transition-colors ${
+                              task.progress >= value 
+                                ? 'bg-purple-600 text-white' 
+                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                            }`}
+                          >
+                            {value}%
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* AI Suggestions */}
+                    {task.suggestions.length > 0 && (
+                      <div className="pt-3 border-t border-gray-200">
+                        <div className="flex items-center gap-1 text-xs text-gray-600 mb-2">
+                          <Sparkles size={12} />
+                          <span>KI-Vorschläge:</span>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {task.suggestions.map((suggestion, idx) => (
+                            <button
+                              key={idx}
+                              onClick={() => executeSuggestion(task, suggestion)}
+                              disabled={isProcessing}
+                              className="px-3 py-1 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-lg text-xs flex items-center gap-1 transition-colors disabled:opacity-50"
+                            >
+                              <suggestion.icon size={14} />
+                              {suggestion.text}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Expanded Details */}
+                    {isExpanded && (
+                      <div className="mt-4 pt-4 border-t border-gray-200">
+                        <div className="mb-3">
+                          <div className="flex justify-between items-center mb-2">
+                            <h4 className="text-sm font-medium text-gray-700">Beschreibung</h4>
+                            <button
+                              onClick={() => setEditingTaskId(isEditing ? null : task.id)}
+                              className="p-1 hover:bg-gray-100 rounded transition-colors"
+                            >
+                              {isEditing ? <Save size={14} /> : <Edit2 size={14} />}
+                            </button>
+                          </div>
+                          
+                          {isEditing ? (
+                            <textarea
+                              value={taskDescriptions[task.id] || ''}
+                              onChange={(e) => updateTaskDescription(task.id, e.target.value)}
+                              placeholder="Beschreibung hinzufügen..."
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                              rows="3"
+                            />
+                          ) : (
+                            <p className="text-sm text-gray-600">
+                              {taskDescriptions[task.id] || <span className="text-gray-400">Keine Beschreibung vorhanden</span>}
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Attachments */}
+                        <div className="mb-3">
+                          <h4 className="text-sm font-medium text-gray-700 mb-2">Anhänge</h4>
+                          <div className="flex gap-2 flex-wrap">
+                            {taskAttachments[task.id]?.map((attachment, idx) => (
+                              <div key={idx} className="flex items-center gap-1 px-2 py-1 bg-gray-100 rounded text-xs">
+                                {attachment.type === 'link' ? <Link size={12} /> :
+                                 attachment.type === 'image' ? <ImageIcon size={12} /> :
+                                 <FileText size={12} />}
+                                <span>{attachment.name}</span>
+                              </div>
+                            ))}
+                            
+                            <button
+                              onClick={() => {
+                                // Placeholder für Upload-Funktion
+                                const url = prompt('Link hinzufügen:');
+                                if (url) {
+                                  addTaskAttachment(task.id, {
+                                    type: 'link',
+                                    name: url.slice(0, 30) + '...',
+                                    url: url
+                                  });
+                                }
+                              }}
+                              className="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-xs flex items-center gap-1 transition-colors"
+                            >
+                              <Plus size={12} />
+                              Anhang
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })
           )}
-          <p className="text-gray-800 text-lg pr-10">
-            {transcript || <span className="text-gray-400">Warte auf Spracheingabe...</span>}
-          </p>
         </div>
+      </div>
+    );
+  };
 
-        {/* Control Buttons */}
-        <div className="flex justify-center gap-4 mb-6">
-          <button
-            onClick={isRecording ? stopRecording : startRecording}
-            disabled={isProcessing}
-            className={`p-6 rounded-full transition-all transform ${
-              isRecording 
-                ? 'bg-red-500 hover:bg-red-600 animate-pulse scale-110' 
-                : 'bg-purple-500 hover:bg-purple-600 hover:scale-105'
-            } text-white shadow-lg disabled:opacity-50`}
-          >
-            {isRecording ? <MicOff size={32} /> : <Mic size={32} />}
-          </button>
-
-          <button
-            onClick={createTaskFromTranscript}
-            disabled={isProcessing || !transcript.trim()}
-            className="p-6 rounded-full bg-green-500 hover:bg-green-600 text-white shadow-lg transition-all transform hover:scale-105 disabled:opacity-50"
-          >
-            {isProcessing ? <Loader2 size={32} className="animate-spin" /> : <Plus size={32} />}
-          </button>
+  const renderCalendar = () => {
+    return (
+      <div className="p-6">
+        <h1 className="text-3xl font-bold text-gray-800 mb-6">Google Kalender</h1>
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+          <iframe
+            src="https://calendar.google.com/calendar/embed?src=primary&ctz=Europe%2FBerlin&mode=WEEK&showTitle=0&showNav=1&showDate=1&showPrint=0&showTabs=0&showCalendars=0&showTz=0&hl=de"
+            style={{ border: 0 }}
+            width="100%"
+            height="600"
+            frameBorder="0"
+            scrolling="no"
+            title="Google Kalender"
+            className="rounded-lg"
+          ></iframe>
         </div>
+      </div>
+    );
+  };
 
-        {/* Status */}
-        {status && (
-          <div className="text-center">
-            <p className="bg-gray-100 rounded-full px-6 py-3 inline-block">
-              {status}
+  const renderAI = () => {
+    return (
+      <div className="p-6">
+        <h1 className="text-3xl font-bold text-gray-800 mb-6">KI-Assistent</h1>
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <div className="text-center py-12">
+            <Brain className="mx-auto text-gray-400 mb-4" size={48} />
+            <h2 className="text-xl font-semibold text-gray-800 mb-2">Claude Integration kommt bald!</h2>
+            <p className="text-gray-600 mb-4">
+              Der KI-Assistent wird in Kürze verfügbar sein und dir bei folgenden Aufgaben helfen:
             </p>
+            <ul className="text-left max-w-md mx-auto space-y-2 text-gray-600">
+              <li className="flex items-start gap-2">
+                <span className="text-green-500">✓</span>
+                <span>E-Mails formulieren und versenden</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-green-500">✓</span>
+                <span>Termine intelligent planen</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-green-500">✓</span>
+                <span>Aufgaben automatisch priorisieren</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-green-500">✓</span>
+                <span>Dokumente erstellen und bearbeiten</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-green-500">✓</span>
+                <span>Komplexe Workflows automatisieren</span>
+              </li>
+            </ul>
           </div>
-        )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderVoiceInput = () => {
+    return (
+      <div className="p-6">
+        <h1 className="text-3xl font-bold text-gray-800 mb-6">Voice Input</h1>
         
-        {/* Examples */}
-        <div className="mt-8 pt-6 border-t">
-          <h4 className="text-sm font-semibold text-gray-600 mb-3">Beispiele:</h4>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-500">
-            <div>• "Morgen Zahnarzt anrufen"</div>
-            <div>• "Mail an Bestatter schreiben"</div>
-            <div>• "Meeting mit Business Partner nächste Woche"</div>
-            <div>• "Umzugskartons packen"</div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-
-  // Assistant View
-  const AssistantView = () => (
-    <div className="p-6 max-w-4xl mx-auto">
-      <h2 className="text-3xl font-bold mb-6 text-gray-800">KI-Assistent</h2>
-      
-      <div className="bg-white rounded-xl shadow-lg p-8">
-        <div className="text-center">
-          <Brain size={64} className="mx-auto text-purple-500 mb-4" />
-          <h3 className="text-xl font-semibold mb-4">Claude Integration</h3>
-          <p className="text-gray-600 mb-6">
-            Die KI-Integration wird in Kürze verfügbar sein.
-          </p>
-          <p className="text-sm text-gray-500 mb-6">
-            Hier kannst du bald direkt mit Claude chatten, um:
-          </p>
-          <ul className="text-left max-w-md mx-auto space-y-2 text-gray-600">
-            <li>• E-Mails formulieren lassen</li>
-            <li>• Aufgaben intelligent priorisieren</li>
-            <li>• Komplexe Projekte planen</li>
-            <li>• Automatische Workflows erstellen</li>
-          </ul>
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <h2 className="text-xl font-semibold text-gray-800 mb-4">🎤 Sprachsteuerung</h2>
           
-          <div className="mt-8 p-4 bg-purple-50 rounded-lg">
-            <p className="text-sm text-purple-700">
-              💡 Tipp: Nutze vorerst die KI-Vorschläge bei deinen Tasks!
+          {/* Transcript Box */}
+          <div className="bg-gray-50 rounded-xl p-4 mb-4 min-h-[150px] max-h-[250px] overflow-y-auto relative">
+            {transcript && (
+              <button
+                onClick={clearTranscript}
+                className="absolute top-2 right-2 p-2 bg-red-100 hover:bg-red-200 rounded-lg text-red-600 transition-colors"
+              >
+                <Trash2 size={16} />
+              </button>
+            )}
+            <p className="text-gray-800 pr-10 whitespace-pre-wrap">
+              {transcript || <span className="text-gray-400">Drücke das Mikrofon und sprich deinen Task...</span>}
             </p>
           </div>
+
+          {/* Control Buttons */}
+          <div className="flex justify-center gap-4 mb-4">
+            <button
+              onClick={isRecording ? stopRecording : startRecording}
+              disabled={isProcessing}
+              className={`p-4 rounded-full transition-all transform ${
+                isRecording 
+                  ? 'bg-red-500 hover:bg-red-600 animate-pulse scale-110' 
+                  : 'bg-purple-600 hover:bg-purple-700 hover:scale-105'
+              } text-white shadow-lg disabled:opacity-50`}
+            >
+              {isRecording ? <MicOff size={28} /> : <Mic size={28} />}
+            </button>
+
+            <button
+              onClick={createTaskFromTranscript}
+              disabled={isProcessing || !transcript.trim()}
+              className="p-4 rounded-full bg-green-600 hover:bg-green-700 text-white shadow-lg transition-all transform hover:scale-105 disabled:opacity-50"
+              title="Task erstellen"
+            >
+              {isProcessing ? <Loader2 size={28} className="animate-spin" /> : <Plus size={28} />}
+            </button>
+          </div>
+
+          {/* Status */}
+          {status && (
+            <div className="text-center">
+              <p className="text-sm bg-gray-100 rounded-full px-4 py-2 inline-block">
+                {status}
+              </p>
+            </div>
+          )}
+
+          {/* Voice Tips */}
+          <div className="mt-6 p-4 bg-purple-50 rounded-xl">
+            <h3 className="text-sm font-semibold text-purple-900 mb-2">💡 Voice-Tipps:</h3>
+            <ul className="text-sm text-purple-700 space-y-1">
+              <li>• Sage "Morgen" oder "Heute" für automatische Deadlines</li>
+              <li>• Erwähne "Familie", "Business", "Loge" für automatische Kategorisierung</li>
+              <li>• Sage "E-Mail schreiben" oder "anrufen" für KI-Vorschläge</li>
+              <li>• Beispiel: "Morgen Mutter anrufen wegen Geburtstag"</li>
+            </ul>
+          </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
-    <div className="min-h-screen bg-gray-100 flex">
+    <div className="min-h-screen bg-gray-50 flex">
       {/* Sidebar */}
-      <Sidebar />
-      
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col">
-        {/* Top Bar */}
-        <div className="bg-white shadow-sm px-6 py-4 flex items-center justify-between">
-          <button
-            onClick={() => setShowSidebar(!showSidebar)}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <Menu size={24} />
-          </button>
-          
-          <div className="flex items-center gap-4">
-            {status && (
-              <span className="text-sm text-gray-600 bg-gray-100 px-3 py-1 rounded-full">
-                {status}
+      <div className={`${showSidebar ? 'w-64' : 'w-0'} transition-all duration-300 bg-gray-900 text-white overflow-hidden`}>
+        <div className="p-4">
+          <div className="flex items-center gap-2 mb-8">
+            <div className="w-8 h-8 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg flex items-center justify-center">
+              <span className="text-white font-bold">🚀</span>
+            </div>
+            <h1 className="text-xl font-bold">FlowLife</h1>
+          </div>
+
+          <nav className="space-y-2">
+            <button
+              onClick={() => setActiveView('dashboard')}
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+                activeView === 'dashboard' ? 'bg-purple-600' : 'hover:bg-gray-800'
+              }`}
+            >
+              <Home size={20} />
+              <span>Dashboard</span>
+            </button>
+
+            <button
+              onClick={() => setActiveView('tasks')}
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+                activeView === 'tasks' ? 'bg-purple-600' : 'hover:bg-gray-800'
+              }`}
+            >
+              <List size={20} />
+              <span>Aufgaben</span>
+              {tasks.length > 0 && (
+                <span className="ml-auto bg-gray-700 px-2 py-0.5 rounded-full text-xs">
+                  {tasks.length}
+                </span>
+              )}
+            </button>
+
+            <button
+              onClick={() => setActiveView('calendar')}
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+                activeView === 'calendar' ? 'bg-purple-600' : 'hover:bg-gray-800'
+              }`}
+            >
+              <CalendarDays size={20} />
+              <span>Google Kalender</span>
+              <span className="ml-auto text-xs">
+                <ChevronDown size={16} className="transform -rotate-90" />
               </span>
+            </button>
+
+            <button
+              onClick={() => setActiveView('ai')}
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+                activeView === 'ai' ? 'bg-purple-600' : 'hover:bg-gray-800'
+              }`}
+            >
+              <Brain size={20} />
+              <span>KI-Assistent</span>
+            </button>
+
+            <button
+              onClick={() => setActiveView('voice')}
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+                activeView === 'voice' ? 'bg-purple-600' : 'hover:bg-gray-800'
+              }`}
+            >
+              <Mic size={20} />
+              <span>Voice Input</span>
+            </button>
+          </nav>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="flex-1">
+        {/* Top Bar */}
+        <div className="bg-white border-b border-gray-200 px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => setShowSidebar(!showSidebar)}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <Menu size={20} />
+              </button>
+              
+              <div className="text-sm text-gray-600">
+                {new Date().toLocaleDateString('de-DE', { 
+                  weekday: 'long', 
+                  year: 'numeric', 
+                  month: 'long', 
+                  day: 'numeric' 
+                })}
+              </div>
+            </div>
+
+            {status && (
+              <div className="text-sm bg-purple-100 text-purple-700 px-3 py-1 rounded-full">
+                {status}
+              </div>
             )}
-            <span className="text-sm text-gray-500">
-              {new Date().toLocaleDateString('de-DE', { 
-                weekday: 'long', 
-                year: 'numeric', 
-                month: 'long', 
-                day: 'numeric' 
-              })}
-            </span>
           </div>
         </div>
-        
+
         {/* Content Area */}
-        <div className="flex-1 overflow-auto">
-          {activeView === 'dashboard' && <DashboardView />}
-          {activeView === 'tasks' && <TasksView />}
-          {activeView === 'voice' && <VoiceView />}
-          {activeView === 'assistant' && <AssistantView />}
-        </div>
+        {renderContent()}
       </div>
     </div>
   );
