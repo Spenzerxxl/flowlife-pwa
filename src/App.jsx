@@ -42,8 +42,6 @@ function App() {
   // UI States
   const [activeView, setActiveView] = useState('dashboard');
   const [showSidebar, setShowSidebar] = useState(true);
-  const [showCalendarSetup, setShowCalendarSetup] = useState(false);
-  const [googleCalendarId, setGoogleCalendarId] = useState('');
   
   // Upload States
   const [isDragging, setIsDragging] = useState(false);
@@ -103,10 +101,6 @@ function App() {
   }, [taskAttachments]);
 
   useEffect(() => {
-    if (googleCalendarId) {
-      localStorage.setItem('flowlife_calendar_id', googleCalendarId);
-    }
-  }, [googleCalendarId]);
 
   // AI-powered task parsing from transcript
   const parseTaskFromTranscript = (text) => {
