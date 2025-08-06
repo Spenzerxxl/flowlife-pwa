@@ -100,6 +100,8 @@ function App() {
     localStorage.setItem('flowlife_attachments', JSON.stringify(taskAttachments));
   }, [taskAttachments]);
 
+  useEffect(() => {
+
   // AI-powered task parsing from transcript
   const parseTaskFromTranscript = (text) => {
     const lowerText = text.toLowerCase();
@@ -1220,7 +1222,7 @@ function App() {
         {renderContent()}
       </div>
     </div>
-  );
+  ));
 }
 
 export default App;
