@@ -1,0 +1,14 @@
+==== COOLIFY SETUP FÜR FLOWLIFE ====
+
+1. In Coolify Dashboard:
+   - New Resource → Dockerfile
+   
+2. Settings:
+   - Name: flowlife-pwa
+   - Domain: flowlife.frankrath.de
+   - Port: 3005
+   
+3. Environment Variables:
+   VITE_SUPABASE_URL=https://database.frankrath.de
+   VITE_SUPABASE_ANON_KEY=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJzdXBhYmFzZSIsImlhdCI6MTc0NzA3MzU4MCwiZXhwIjo0OTAyNzQ3MTgwLCJyb2xlIjoiYW5vbiJ9.0l5w0smQh1FDN-nGnfmNbX80smyL-XcQM9C69OwE3Vo
+   VITE_N8N_URL=https://automatisierung.frankrath.de/webhook

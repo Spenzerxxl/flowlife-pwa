@@ -1,0 +1,26 @@
+# FlowLife PWA Docker Deployment
+# Domain: flowlife.frankrath.de
+version: '3.8'
+
+services:
+  flowlife:
+    container_name: flowlife-pwa
+    image: node:18-alpine
+    working_dir: /app
+    volumes:
+      - ./client:/app
+    ports:
+      - "3005:3000"  # Interner Port 3005 für FlowLife
+    environment:
+      - NODE_ENV=production
+      - REACT_APP_SUPABASE_URL=https://[DEINE-SUPABASE-URL].supabase.co
+      - REACT_APP_SUPABASE_ANON_KEY=[DEIN-ANON-KEY]
+      - REACT_APP_N8N_WEBHOOK_URL=https://automatisierung.frankrath.de/webhook
+    command: sh -c "npm install && npm run build && npx serve -s build -l 3000"
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.flowlife.rule=Host(`flowlife.frankrath.de`)"
+      - "traefik.http.routers.flowlife.entrypoints=websecure"
+      - "traefik.http.routers.flowlife.tls.certresolver=letsencrypt"
+      - "traefik.http.services.flowlife.loadbalancer.server.port=3000"

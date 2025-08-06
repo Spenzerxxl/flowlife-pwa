@@ -1,0 +1,150 @@
+{
+  "name": "FlowLife Mail Sender",
+  "nodes": [
+    {
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "position": [250, 300],
+      "webhookId": "flowlife-mail-sender",
+      "parameters": {
+        "path": "flowlife/send-mail",
+        "method": "POST",
+        "responseMode": "onReceived",
+        "responseData": "{ \"status\": \"received\" }"
+      }
+    },
+    {
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.if",
+      "position": [450, 300],
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json[\"recipient\"]}}",
+              "operation": "isNotEmpty"
+            },
+            {
+              "value1": "={{$json[\"subject\"]}}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Claude AI Generation",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [650, 200],
+      "parameters": {
+        "url": "https://api.anthropic.com/v1/messages",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "claude-3-haiku-20240307"
+            },
+            {
+              "name": "max_tokens",
+              "value": 1000
+            },
+            {
+              "name": "messages",
+              "value": "={{[{\"role\":\"user\",\"content\":\"Schreibe eine \" + $json[\"template\"] + \" E-Mail. Kontext: \" + $json[\"context\"] + \". Ton: \" + $json[\"tone\"] + \". Nur den Mail-Text, keine Anrede.\"}]}}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Send via Gmail",
+      "type": "n8n-nodes-base.gmail",
+      "position": [850, 300],
+      "parameters": {
+        "operation": "send",
+        "to": "={{$node[\"Webhook\"].json[\"recipient\"]}}",
+        "subject": "={{$node[\"Webhook\"].json[\"subject\"]}}",
+        "message": "={{$node[\"Claude AI Generation\"].json[\"content\"][0][\"text\"] || $node[\"Webhook\"].json[\"content\"]}}"
+      }
+    },
+    {
+      "name": "Update Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1050, 300],
+      "parameters": {
+        "url": "https://database.frankrath.de/rest/v1/mail_history",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "YOUR_SUPABASE_ANON_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "task_id",
+              "value": "={{$node[\"Webhook\"].json[\"task_id\"]}}"
+            },
+            {
+              "name": "recipient",
+              "value": "={{$node[\"Webhook\"].json[\"recipient\"]}}"
+            },
+            {
+              "name": "subject",
+              "value": "={{$node[\"Webhook\"].json[\"subject\"]}}"
+            },
+            {
+              "name": "content",
+              "value": "={{$node[\"Send via Gmail\"].json[\"message\"]}}"
+            },
+            {
+              "name": "n8n_workflow_id",
+              "value": "={{$workflow.id}}"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{"node": "Validate Input", "type": "main", "index": 0}]]
+    },
+    "Validate Input": {
+      "main": [
+        [{"node": "Claude AI Generation", "type": "main", "index": 0}],
+        []
+      ]
+    },
+    "Claude AI Generation": {
+      "main": [[{"node": "Send via Gmail", "type": "main", "index": 0}]]
+    },
+    "Send via Gmail": {
+      "main": [[{"node": "Update Supabase", "type": "main", "index": 0}]]
+    }
+  }
+}
