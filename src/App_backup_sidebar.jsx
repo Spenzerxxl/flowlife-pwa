@@ -422,7 +422,7 @@ function App() {
           <aside className={`${isMobile ? 'absolute z-40 h-full' : 'relative'} w-64 bg-white dark:bg-gray-800 shadow-lg`}>
             <nav className="p-4">
               <button
-                onClick={() => { setActiveView('dashboard'); if (isMobile) setShowSidebar(false); }}
+                onClick={() => setActiveView('dashboard')}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
                   activeView === 'dashboard' 
                     ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' 
@@ -434,7 +434,7 @@ function App() {
               </button>
               
               <button
-                onClick={() => { setActiveView('tasks'); if (isMobile) setShowSidebar(false); }}
+                onClick={() => setActiveView('tasks')}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors mt-2 ${
                   activeView === 'tasks' 
                     ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' 
@@ -446,7 +446,7 @@ function App() {
               </button>
 
               <button
-                onClick={() => { setActiveView('calendar'); if (isMobile) setShowSidebar(false); }}
+                onClick={() => setActiveView('calendar')}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors mt-2 ${
                   activeView === 'calendar' 
                     ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' 
@@ -463,7 +463,7 @@ function App() {
                   Kategorien
                 </h3>
                 <button
-                  onClick={() => { setSelectedCategory('alle'); if (isMobile) setShowSidebar(false); }}
+                  onClick={() => setSelectedCategory('alle')}
                   className={`w-full text-left px-4 py-2 rounded-lg transition-colors ${
                     selectedCategory === 'alle'
                       ? 'bg-gray-100 dark:bg-gray-700'
@@ -475,7 +475,7 @@ function App() {
                 {categories.map(cat => (
                   <button
                     key={cat.id}
-                    onClick={() => { setSelectedCategory(cat.id); if (isMobile) setShowSidebar(false); }}
+                    onClick={() => setSelectedCategory(cat.id)}
                     className={`w-full text-left px-4 py-2 rounded-lg transition-colors ${
                       selectedCategory === cat.id
                         ? 'bg-gray-100 dark:bg-gray-700'
