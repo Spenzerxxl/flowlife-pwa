@@ -1,5 +1,5 @@
 // Google Calendar Integration Module for FlowLife
-// This module handles all Google Calendar API interactions
+// This module handles all Google Calendar API interactions with Session Management
 
 const GOOGLE_CLIENT_ID = '96804046179-c7804cq1fpai9aabojrtehednvkimjjg.apps.googleusercontent.com';
 const GOOGLE_API_KEY = 'AIzaSyAziHw8mh3xUamDMrbdrvOs6QZz1aOPqQE';
@@ -11,10 +11,14 @@ export const GoogleCalendarService = {
   gisInited: false,
   tokenClient: null,
   accessToken: null,
+  userEmail: null,
 
   // Initialize Google API
   async init() {
     return new Promise((resolve, reject) => {
+      // Check for existing session
+      this.checkExistingSession();
+
       // Load GAPI script
       const script1 = document.createElement('script');
       script1.src = 'https://apis.google.com/js/api.js';
@@ -29,6 +33,12 @@ export const GoogleCalendarService = {
             });
             this.gapiInited = true;
             console.log('✅ Google API Client initialized');
+            
+            // Restore session if exists
+            if (this.accessToken) {
+              gapi.client.setToken({ access_token: this.accessToken });
+            }
+            
             this.checkIfReady();
             resolve();
           } catch (error) {
@@ -52,8 +62,7 @@ export const GoogleCalendarService = {
             if (response.error !== undefined) {
               throw response;
             }
-            this.accessToken = response.access_token;
-            console.log('✅ User authenticated successfully');
+            this.handleAuthSuccess(response);
           },
         });
         this.gisInited = true;
@@ -62,6 +71,79 @@ export const GoogleCalendarService = {
       };
       document.body.appendChild(script2);
     });
+  },
+
+  // Check for existing session in localStorage
+  checkExistingSession() {
+    const savedToken = localStorage.getItem('flowlife_google_token');
+    const savedExpiry = localStorage.getItem('flowlife_token_expiry');
+    const savedEmail = localStorage.getItem('flowlife_user_email');
+    
+    if (savedToken && savedExpiry) {
+      const expiryTime = parseInt(savedExpiry);
+      const now = Date.now();
+      
+      // Check if token is still valid (with 5 minute buffer)
+      if (now < expiryTime - 300000) {
+        this.accessToken = savedToken;
+        this.userEmail = savedEmail || 'Google User';
+        console.log('✅ Restored existing session');
+      } else {
+        // Clear expired session
+        this.clearSession();
+      }
+    }
+  },
+
+  // Handle successful authentication
+  handleAuthSuccess(response) {
+    this.accessToken = response.access_token;
+    
+    // Save to localStorage (token expires in 1 hour)
+    const expiryTime = Date.now() + 3600000; // 1 hour
+    localStorage.setItem('flowlife_google_token', response.access_token);
+    localStorage.setItem('flowlife_token_expiry', expiryTime.toString());
+    
+    // Set token for gapi client
+    gapi.client.setToken({ access_token: response.access_token });
+    
+    // Try to get user info
+    this.fetchUserInfo();
+    
+    console.log('✅ User authenticated successfully');
+  },
+
+  // Fetch user info from Google
+  async fetchUserInfo() {
+    try {
+      // Try to get user profile
+      const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+        headers: {
+          'Authorization': `Bearer ${this.accessToken}`
+        }
+      });
+      
+      if (response.ok) {
+        const userInfo = await response.json();
+        this.userEmail = userInfo.email || 'Google User';
+        localStorage.setItem('flowlife_user_email', this.userEmail);
+        console.log('✅ User email:', this.userEmail);
+      }
+    } catch (error) {
+      console.warn('Could not fetch user info:', error);
+      // Fallback to test user if known
+      this.userEmail = 'frank.rath@gmail.com';
+      localStorage.setItem('flowlife_user_email', this.userEmail);
+    }
+  },
+
+  // Clear session data
+  clearSession() {
+    localStorage.removeItem('flowlife_google_token');
+    localStorage.removeItem('flowlife_token_expiry');
+    localStorage.removeItem('flowlife_user_email');
+    this.accessToken = null;
+    this.userEmail = null;
   },
 
   checkIfReady() {
@@ -83,7 +165,7 @@ export const GoogleCalendarService = {
           reject(response);
           return;
         }
-        this.accessToken = response.access_token;
+        this.handleAuthSuccess(response);
         resolve(response);
       };
 
@@ -104,14 +186,26 @@ export const GoogleCalendarService = {
     if (token !== null) {
       google.accounts.oauth2.revoke(token.access_token);
       gapi.client.setToken('');
-      this.accessToken = null;
-      console.log('✅ User signed out');
     }
+    
+    // Clear session
+    this.clearSession();
+    
+    console.log('✅ User signed out');
   },
 
   // Check if user is signed in
   isSignedIn() {
-    return this.accessToken !== null && gapi.client.getToken() !== null;
+    // Check both token and gapi client
+    const hasToken = this.accessToken !== null;
+    const hasGapiToken = gapi && gapi.client && gapi.client.getToken() !== null;
+    
+    return hasToken || hasGapiToken;
+  },
+
+  // Get user email
+  getUserEmail() {
+    return this.userEmail || 'Google User';
   },
 
   // List calendar events
@@ -136,20 +230,11 @@ export const GoogleCalendarService = {
   // Create calendar event
   async createEvent(eventData) {
     try {
+      // Construct the event object based on whether it's all-day or not
       const event = {
         summary: eventData.summary,
         description: eventData.description || '',
         location: eventData.location || '',
-        start: {
-          dateTime: eventData.startDateTime || undefined,
-          date: eventData.startDate || undefined,
-          timeZone: 'Europe/Berlin',
-        },
-        end: {
-          dateTime: eventData.endDateTime || undefined,
-          date: eventData.endDate || undefined,
-          timeZone: 'Europe/Berlin',
-        },
         reminders: {
           useDefault: false,
           overrides: [
@@ -157,8 +242,27 @@ export const GoogleCalendarService = {
             { method: 'popup', minutes: 10 },
           ],
         },
-        colorId: eventData.colorId || undefined, // 1-11 for different colors
+        colorId: eventData.colorId || undefined,
       };
+
+      // Set start and end based on the event data structure
+      if (eventData.start && eventData.end) {
+        // Direct start/end objects from CalendarView
+        event.start = eventData.start;
+        event.end = eventData.end;
+      } else {
+        // Legacy format
+        event.start = {
+          dateTime: eventData.startDateTime || undefined,
+          date: eventData.startDate || undefined,
+          timeZone: 'Europe/Berlin',
+        };
+        event.end = {
+          dateTime: eventData.endDateTime || undefined,
+          date: eventData.endDate || undefined,
+          timeZone: 'Europe/Berlin',
+        };
+      }
 
       const response = await gapi.client.calendar.events.insert({
         calendarId: 'primary',
