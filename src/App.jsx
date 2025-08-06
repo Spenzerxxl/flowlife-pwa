@@ -372,6 +372,14 @@ function App() {
     setStatus('');
   };
 
+  // Handle navigation click - close sidebar on mobile
+  const handleNavigation = (view) => {
+    setActiveView(view);
+    if (isMobile) {
+      setShowSidebar(false);
+    }
+  };
+
   // Theme classes
   const theme = {
     bg: isDarkMode ? 'bg-gray-900' : 'bg-gray-50',
@@ -391,36 +399,44 @@ function App() {
 
   return (
     <div className={`min-h-screen ${theme.bg} transition-colors duration-300`}>
-      {/* Theme Toggle Button */}
+      {/* Theme Toggle Button - repositioned for mobile */}
       <button
         onClick={() => setIsDarkMode(!isDarkMode)}
-        className={`fixed top-4 right-4 p-3 rounded-full ${theme.bgSecondary} ${theme.text} shadow-lg transition-all hover:scale-110 z-50`}
+        className={`fixed ${isMobile ? 'top-4 right-4' : 'top-4 right-20'} p-3 rounded-full ${theme.bgSecondary} ${theme.text} shadow-lg transition-all hover:scale-110 z-50`}
       >
         {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
       </button>
 
-      {/* Sidebar */}
-      <div className={`fixed left-0 top-0 h-full w-64 ${theme.bgSecondary} ${theme.border} border-r transform transition-transform ${showSidebar ? 'translate-x-0' : '-translate-x-full'} z-40`}>
+      {/* Mobile Sidebar Overlay */}
+      {isMobile && showSidebar && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-30"
+          onClick={() => setShowSidebar(false)}
+        />
+      )}
+
+      {/* Sidebar - responsive width */}
+      <div className={`fixed left-0 top-0 h-full ${isMobile ? 'w-48' : 'w-64'} ${theme.bgSecondary} ${theme.border} border-r transform transition-transform ${showSidebar ? 'translate-x-0' : '-translate-x-full'} z-40`}>
         <div className="p-4">
           <h2 className={`text-xl font-bold ${theme.text} mb-6`}>🚀 FlowLife</h2>
           
           <nav className="space-y-2">
             <button
-              onClick={() => setActiveView('dashboard')}
+              onClick={() => handleNavigation('dashboard')}
               className={`w-full text-left px-4 py-2 rounded-lg ${activeView === 'dashboard' ? theme.bgTertiary : ''} ${theme.text} ${theme.hover} transition-colors flex items-center gap-2`}
             >
               <Home size={18} />
               Dashboard
             </button>
             <button
-              onClick={() => setActiveView('tasks')}
+              onClick={() => handleNavigation('tasks')}
               className={`w-full text-left px-4 py-2 rounded-lg ${activeView === 'tasks' ? theme.bgTertiary : ''} ${theme.text} ${theme.hover} transition-colors flex items-center gap-2`}
             >
               <ListTodo size={18} />
               Aufgaben
             </button>
             <button
-              onClick={() => setActiveView('calendar')}
+              onClick={() => handleNavigation('calendar')}
               className={`w-full text-left px-4 py-2 rounded-lg ${activeView === 'calendar' ? theme.bgTertiary : ''} ${theme.text} ${theme.hover} transition-colors flex items-center gap-2`}
             >
               <CalendarDays size={18} />
@@ -430,36 +446,38 @@ function App() {
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className={`transition-all duration-300 ${showSidebar ? 'ml-64' : 'ml-0'}`}>
-        {/* Header */}
+      {/* Main Content - adjusted margin for mobile */}
+      <div className={`transition-all duration-300 ${!isMobile && showSidebar ? 'ml-64' : 'ml-0'}`}>
+        {/* Header - better spacing for mobile */}
         <div className={`sticky top-0 ${theme.bgSecondary} ${theme.border} border-b p-4 flex items-center gap-4 z-30`}>
           <button
             onClick={() => setShowSidebar(!showSidebar)}
-            className={`p-2 ${theme.hover} rounded-lg ${theme.text} transition-colors`}
+            className={`p-2 ${theme.hover} rounded-lg ${theme.text} transition-colors ${isMobile ? 'mr-2' : ''}`}
           >
             <Menu size={20} />
           </button>
           
-          <h1 className={`text-2xl font-bold ${theme.text} flex-1`}>
+          <h1 className={`${isMobile ? 'text-xl' : 'text-2xl'} font-bold ${theme.text} flex-1`}>
             {activeView === 'calendar' ? '📅 Kalender' : activeView === 'tasks' ? '📋 Meine Aufgaben' : '🏠 Dashboard'}
           </h1>
           
-          <span className={`${theme.textSecondary} text-sm`}>
-            {openTasks.length} offen • {tasks.filter(t => t.progress === 100).length} erledigt
-          </span>
+          {!isMobile && (
+            <span className={`${theme.textSecondary} text-sm`}>
+              {openTasks.length} offen • {tasks.filter(t => t.progress === 100).length} erledigt
+            </span>
+          )}
         </div>
 
         {/* View Content */}
         {activeView === 'dashboard' ? (
           // Dashboard View
-          <div className="p-6 max-w-6xl mx-auto">
+          <div className={`p-${isMobile ? '4' : '6'} max-w-6xl mx-auto`}>
             {/* Quick Add Section */}
-            <div className={`${theme.bgSecondary} rounded-xl shadow-lg p-6 mb-6`}>
-              <h2 className={`text-xl font-semibold ${theme.text} mb-4`}>➕ Schnelleintrag</h2>
+            <div className={`${theme.bgSecondary} rounded-xl shadow-lg p-${isMobile ? '4' : '6'} mb-6`}>
+              <h2 className={`${isMobile ? 'text-lg' : 'text-xl'} font-semibold ${theme.text} mb-4`}>➕ Schnelleintrag</h2>
               
               {!showTaskInput && !showVoiceInput ? (
-                <div className="flex gap-4">
+                <div className={`flex ${isMobile ? 'flex-col' : 'flex-row'} gap-${isMobile ? '2' : '4'}`}>
                   <button
                     onClick={() => setShowVoiceInput(true)}
                     className="flex-1 p-4 bg-blue-500 hover:bg-blue-600 text-white rounded-lg flex items-center justify-center gap-2 transition-colors"
@@ -579,11 +597,11 @@ function App() {
             </div>
 
             {/* Today's Overview */}
-            <div className="grid md:grid-cols-2 gap-6">
+            <div className={`grid ${isMobile ? 'grid-cols-1' : 'md:grid-cols-2'} gap-6`}>
               {/* Today's Tasks */}
-              <div className={`${theme.bgSecondary} rounded-xl shadow-lg p-6`}>
-                <h3 className={`text-lg font-semibold ${theme.text} mb-4 flex items-center gap-2`}>
-                  <Clock size={20} />
+              <div className={`${theme.bgSecondary} rounded-xl shadow-lg p-${isMobile ? '4' : '6'}`}>
+                <h3 className={`${isMobile ? 'text-base' : 'text-lg'} font-semibold ${theme.text} mb-4 flex items-center gap-2`}>
+                  <Clock size={isMobile ? 18 : 20} />
                   Heute fällig ({todaysTasks.length})
                 </h3>
                 <div className="space-y-2">
