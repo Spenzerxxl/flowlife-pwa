@@ -1222,7 +1222,7 @@ function App() {
         {renderContent()}
       </div>
     </div>
-  );
+  ));
 }
 
 export default App;
