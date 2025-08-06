@@ -1,22 +1,20 @@
-// CalendarView.jsx - Mit Kalender-Wochenansicht und Listen-Toggle
+// CalendarView.jsx - Mit Theme-Support
 import React, { useState, useEffect } from 'react';
 import { 
   CalendarDays, LogIn, LogOut, RefreshCw, CalendarPlus, 
   CalendarX, Edit2, Clock, MapPin, Loader2, CheckCircle,
-  Calendar, List, ChevronLeft, ChevronRight, LayoutGrid
+  ChevronLeft, ChevronRight, Calendar, LayoutGrid, List
 } from 'lucide-react';
 import GoogleCalendarService from './GoogleCalendarService';
 
-function CalendarView({ tasks, taskDescriptions, onCreateEventFromTask }) {
+function CalendarView({ tasks, taskDescriptions, onCreateEventFromTask, viewMode = 'week', theme = 'light' }) {
   const [isSignedIn, setIsSignedIn] = useState(false);
   const [calendarEvents, setCalendarEvents] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showEventModal, setShowEventModal] = useState(false);
   const [editingEvent, setEditingEvent] = useState(null);
   const [status, setStatus] = useState('');
-  const [viewMode, setViewMode] = useState('week'); // 'week', 'list'
   const [currentWeek, setCurrentWeek] = useState(new Date());
-  
   const [newEvent, setNewEvent] = useState({
     summary: '',
     description: '',
@@ -27,6 +25,40 @@ function CalendarView({ tasks, taskDescriptions, onCreateEventFromTask }) {
     location: '',
     isAllDay: false
   });
+
+  // Theme Classes
+  const themeClasses = {
+    // Container
+    containerBg: theme === 'light' ? 'bg-white' : 'bg-gray-800',
+    
+    // Text
+    primaryText: theme === 'light' ? 'text-gray-900' : 'text-white',
+    secondaryText: theme === 'light' ? 'text-gray-600' : 'text-gray-400',
+    
+    // Calendar Grid
+    gridBg: theme === 'light' ? 'bg-gray-50' : 'bg-gray-900',
+    gridBorder: theme === 'light' ? 'border-gray-200' : 'border-gray-700',
+    
+    // Events
+    eventBg: theme === 'light' ? 'bg-blue-100 hover:bg-blue-200' : 'bg-blue-900 hover:bg-blue-800',
+    eventText: theme === 'light' ? 'text-blue-900' : 'text-blue-100',
+    
+    // Today Highlight
+    todayBg: theme === 'light' ? 'bg-green-50' : 'bg-green-900/30',
+    todayBorder: theme === 'light' ? 'border-green-400' : 'border-green-600',
+    
+    // Buttons
+    buttonBg: theme === 'light' ? 'bg-gray-100 hover:bg-gray-200' : 'bg-gray-700 hover:bg-gray-600',
+    buttonText: theme === 'light' ? 'text-gray-700' : 'text-gray-200',
+    
+    // Inputs
+    inputBg: theme === 'light' ? 'bg-white border-gray-300' : 'bg-gray-700 border-gray-600',
+    inputText: theme === 'light' ? 'text-gray-900' : 'text-white',
+    
+    // Modal
+    modalBg: theme === 'light' ? 'bg-white' : 'bg-gray-800',
+    modalOverlay: 'bg-black bg-opacity-50',
+  };
 
   // Initialize Google Calendar Service
   useEffect(() => {
@@ -40,7 +72,7 @@ function CalendarView({ tasks, taskDescriptions, onCreateEventFromTask }) {
       })
       .catch(error => {
         console.error('Failed to initialize Google Calendar:', error);
-        setStatus('⚠️ Google Calendar konnte nicht geladen werden. Bitte API Key prüfen.');
+        setStatus('⚠️ Google Calendar konnte nicht geladen werden.');
       });
   }, []);
 
@@ -71,54 +103,35 @@ function CalendarView({ tasks, taskDescriptions, onCreateEventFromTask }) {
     try {
       const events = await GoogleCalendarService.listEvents();
       setCalendarEvents(events);
-      setStatus(`✅ ${events.length} Termine geladen`);
+      setStatus(`📅 ${events.length} Events geladen`);
     } catch (error) {
       console.error('Failed to load events:', error);
-      setStatus('❌ Fehler beim Laden der Termine');
+      setStatus('❌ Events konnten nicht geladen werden');
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Helper: Get week dates
-  const getWeekDates = (date) => {
-    const week = [];
-    const startOfWeek = new Date(date);
+  // Get week dates
+  const getWeekDates = () => {
+    const dates = [];
+    const startOfWeek = new Date(currentWeek);
     const day = startOfWeek.getDay();
-    const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1); // Monday start
+    const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1);
     startOfWeek.setDate(diff);
-    
+
     for (let i = 0; i < 7; i++) {
-      const day = new Date(startOfWeek);
-      day.setDate(startOfWeek.getDate() + i);
-      week.push(day);
+      const date = new Date(startOfWeek);
+      date.setDate(startOfWeek.getDate() + i);
+      dates.push(date);
     }
-    return week;
+    return dates;
   };
 
-  // Helper: Format date for display
-  const formatDateShort = (date) => {
-    return date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
-  };
-
-  // Helper: Get events for specific date
-  const getEventsForDate = (date) => {
-    return calendarEvents.filter(event => {
-      const eventDate = new Date(event.start.dateTime || event.start.date);
-      return eventDate.toDateString() === date.toDateString();
-    });
-  };
-
-  // Navigate weeks
-  const goToPreviousWeek = () => {
+  // Navigate week
+  const navigateWeek = (direction) => {
     const newWeek = new Date(currentWeek);
-    newWeek.setDate(currentWeek.getDate() - 7);
-    setCurrentWeek(newWeek);
-  };
-
-  const goToNextWeek = () => {
-    const newWeek = new Date(currentWeek);
-    newWeek.setDate(currentWeek.getDate() + 7);
+    newWeek.setDate(newWeek.getDate() + (direction * 7));
     setCurrentWeek(newWeek);
   };
 
@@ -126,883 +139,493 @@ function CalendarView({ tasks, taskDescriptions, onCreateEventFromTask }) {
     setCurrentWeek(new Date());
   };
 
-  // Format time for event display
-  const formatEventTime = (event) => {
-    if (!event.start.dateTime) return 'Ganztägig';
-    const date = new Date(event.start.dateTime);
+  // Get events for a specific date
+  const getEventsForDate = (date) => {
+    return calendarEvents.filter(event => {
+      const eventDate = new Date(event.start.dateTime || event.start.date);
+      return eventDate.toDateString() === date.toDateString();
+    });
+  };
+
+  // Format time
+  const formatTime = (dateTime) => {
+    if (!dateTime) return 'Ganztägig';
+    const date = new Date(dateTime);
     return date.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
   };
 
-  // Week View Component
-  const WeekView = () => {
-    const weekDates = getWeekDates(currentWeek);
-    const weekDays = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
-    const today = new Date().toDateString();
-    
-    return (
-      <div className="week-view">
-        {/* Navigation */}
-        <div className="week-navigation">
-          <button onClick={goToPreviousWeek} className="nav-btn">
-            <ChevronLeft size={20} />
-          </button>
-          <button onClick={goToToday} className="today-btn">
-            Heute
-          </button>
-          <span className="week-label">
-            {formatDateShort(weekDates[0])} - {formatDateShort(weekDates[6])}
-          </span>
-          <button onClick={goToNextWeek} className="nav-btn">
-            <ChevronRight size={20} />
-          </button>
-        </div>
-
-        {/* Calendar Grid */}
-        <div className="calendar-grid">
-          {/* Header */}
-          <div className="calendar-header">
-            {weekDates.map((date, index) => (
-              <div 
-                key={index} 
-                className={`day-header ${date.toDateString() === today ? 'today' : ''}`}
-              >
-                <div className="day-name">{weekDays[index]}</div>
-                <div className="day-date">{date.getDate()}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* Events Grid */}
-          <div className="calendar-body">
-            {weekDates.map((date, index) => {
-              const dayEvents = getEventsForDate(date);
-              return (
-                <div 
-                  key={index} 
-                  className={`day-column ${date.toDateString() === today ? 'today-column' : ''}`}
-                >
-                  {dayEvents.length === 0 ? (
-                    <div className="no-events">-</div>
-                  ) : (
-                    dayEvents.map((event, eventIndex) => (
-                      <div 
-                        key={eventIndex} 
-                        className="event-card"
-                        onClick={() => handleEditEvent(event)}
-                      >
-                        <div className="event-time">{formatEventTime(event)}</div>
-                        <div className="event-title">{event.summary}</div>
-                        {event.location && (
-                          <div className="event-location">
-                            <MapPin size={12} /> {event.location}
-                          </div>
-                        )}
-                      </div>
-                    ))
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    );
+  // Check if date is today
+  const isToday = (date) => {
+    const today = new Date();
+    return date.toDateString() === today.toDateString();
   };
 
-  // List View Component (simplified)
-  const ListView = () => {
-    return (
-      <div className="events-list">
-        {calendarEvents.length === 0 ? (
-          <p className="no-events-message">Keine Termine vorhanden</p>
-        ) : (
-          calendarEvents.map((event, index) => (
-            <div key={index} className="event-item">
-              <div className="event-header">
-                <h4>{event.summary}</h4>
-                <div className="event-actions">
-                  <button onClick={() => handleEditEvent(event)} className="edit-btn">
-                    <Edit2 size={16} />
-                  </button>
-                  <button onClick={() => handleDeleteEvent(event.id)} className="delete-btn">
-                    <CalendarX size={16} />
-                  </button>
-                </div>
-              </div>
-              <div className="event-details">
-                <span className="event-date">
-                  <Clock size={14} />
-                  {new Date(event.start.dateTime || event.start.date).toLocaleString('de-DE')}
-                </span>
-                {event.location && (
-                  <span className="event-location">
-                    <MapPin size={14} />
-                    {event.location}
-                  </span>
-                )}
-              </div>
-              {event.description && (
-                <p className="event-description">{event.description}</p>
-              )}
-            </div>
-          ))
-        )}
-      </div>
-    );
-  };
+  // Create event
+  const createEvent = async () => {
+    if (!newEvent.summary || !newEvent.startDate) {
+      setStatus('⚠️ Bitte Titel und Datum eingeben');
+      return;
+    }
 
-  // Create new event
-  const handleCreateEvent = async () => {
+    setIsLoading(true);
     try {
-      const eventData = {
+      let startDateTime, endDateTime;
+
+      if (newEvent.isAllDay) {
+        startDateTime = newEvent.startDate;
+        endDateTime = newEvent.endDate || newEvent.startDate;
+      } else {
+        startDateTime = `${newEvent.startDate}T${newEvent.startTime || '09:00'}:00`;
+        endDateTime = `${newEvent.endDate || newEvent.startDate}T${newEvent.endTime || '10:00'}:00`;
+      }
+
+      const event = {
         summary: newEvent.summary,
         description: newEvent.description,
         location: newEvent.location,
-        start: newEvent.isAllDay 
-          ? { date: newEvent.startDate }
-          : { dateTime: `${newEvent.startDate}T${newEvent.startTime}:00` },
-        end: newEvent.isAllDay
-          ? { date: newEvent.endDate || newEvent.startDate }
-          : { dateTime: `${newEvent.endDate || newEvent.startDate}T${newEvent.endTime || newEvent.startTime}:00` }
+        start: newEvent.isAllDay ? { date: startDateTime } : { dateTime: startDateTime },
+        end: newEvent.isAllDay ? { date: endDateTime } : { dateTime: endDateTime }
       };
 
-      await GoogleCalendarService.createEvent(eventData);
-      setStatus('✅ Termin erstellt!');
+      await GoogleCalendarService.createEvent(event);
+      setStatus('✅ Event erstellt!');
       loadEvents();
       setShowEventModal(false);
-      resetEventForm();
+      setNewEvent({
+        summary: '',
+        description: '',
+        startDate: '',
+        startTime: '',
+        endDate: '',
+        endTime: '',
+        location: '',
+        isAllDay: false
+      });
     } catch (error) {
       console.error('Failed to create event:', error);
-      setStatus('❌ Fehler beim Erstellen des Termins');
-    }
-  };
-
-  // Edit event
-  const handleEditEvent = (event) => {
-    setEditingEvent(event);
-    setNewEvent({
-      summary: event.summary,
-      description: event.description || '',
-      location: event.location || '',
-      startDate: event.start.dateTime ? event.start.dateTime.split('T')[0] : event.start.date,
-      startTime: event.start.dateTime ? event.start.dateTime.split('T')[1].slice(0, 5) : '',
-      endDate: event.end.dateTime ? event.end.dateTime.split('T')[0] : event.end.date,
-      endTime: event.end.dateTime ? event.end.dateTime.split('T')[1].slice(0, 5) : '',
-      isAllDay: !event.start.dateTime
-    });
-    setShowEventModal(true);
-  };
-
-  // Update event
-  const handleUpdateEvent = async () => {
-    try {
-      const eventData = {
-        summary: newEvent.summary,
-        description: newEvent.description,
-        location: newEvent.location,
-        start: newEvent.isAllDay 
-          ? { date: newEvent.startDate }
-          : { dateTime: `${newEvent.startDate}T${newEvent.startTime}:00` },
-        end: newEvent.isAllDay
-          ? { date: newEvent.endDate || newEvent.startDate }
-          : { dateTime: `${newEvent.endDate || newEvent.startDate}T${newEvent.endTime || newEvent.startTime}:00` }
-      };
-
-      await GoogleCalendarService.updateEvent(editingEvent.id, eventData);
-      setStatus('✅ Termin aktualisiert!');
-      loadEvents();
-      setShowEventModal(false);
-      setEditingEvent(null);
-      resetEventForm();
-    } catch (error) {
-      console.error('Failed to update event:', error);
-      setStatus('❌ Fehler beim Aktualisieren');
+      setStatus('❌ Event konnte nicht erstellt werden');
+    } finally {
+      setIsLoading(false);
     }
   };
 
   // Delete event
-  const handleDeleteEvent = async (eventId) => {
-    if (window.confirm('Termin wirklich löschen?')) {
-      try {
-        await GoogleCalendarService.deleteEvent(eventId);
-        setStatus('✅ Termin gelöscht');
-        loadEvents();
-      } catch (error) {
-        console.error('Failed to delete event:', error);
-        setStatus('❌ Fehler beim Löschen');
-      }
+  const deleteEvent = async (eventId) => {
+    if (!window.confirm('Event wirklich löschen?')) return;
+
+    setIsLoading(true);
+    try {
+      await GoogleCalendarService.deleteEvent(eventId);
+      setStatus('✅ Event gelöscht');
+      loadEvents();
+    } catch (error) {
+      console.error('Failed to delete event:', error);
+      setStatus('❌ Event konnte nicht gelöscht werden');
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  // Reset form
-  const resetEventForm = () => {
-    setNewEvent({
-      summary: '',
-      description: '',
-      startDate: '',
-      startTime: '',
-      endDate: '',
-      endTime: '',
-      location: '',
-      isAllDay: false
-    });
-  };
+  // Week View Component
+  const WeekView = () => {
+    const weekDates = getWeekDates();
+    const dayNames = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 
-  return (
-    <div className="calendar-container">
-      {/* Header with controls */}
-      <div className="calendar-header-bar">
-        <div className="header-left">
-          <h3>
-            <CalendarDays className="inline-icon" />
-            Google Kalender
-          </h3>
-          {status && <span className="status-message">{status}</span>}
+    return (
+      <div className={`${themeClasses.containerBg} rounded-xl p-6 shadow-sm`}>
+        {/* Week Navigation */}
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => navigateWeek(-1)}
+              className={`p-2 rounded-lg ${themeClasses.buttonBg} ${themeClasses.buttonText} transition-colors`}
+            >
+              <ChevronLeft size={20} />
+            </button>
+            <button
+              onClick={goToToday}
+              className={`px-4 py-2 rounded-lg ${themeClasses.buttonBg} ${themeClasses.buttonText} transition-colors`}
+            >
+              Heute
+            </button>
+            <button
+              onClick={() => navigateWeek(1)}
+              className={`p-2 rounded-lg ${themeClasses.buttonBg} ${themeClasses.buttonText} transition-colors`}
+            >
+              <ChevronRight size={20} />
+            </button>
+          </div>
+
+          <div className={`text-lg font-semibold ${themeClasses.primaryText}`}>
+            {weekDates[0].toLocaleDateString('de-DE', { month: 'long', year: 'numeric' })}
+          </div>
         </div>
 
-        <div className="header-controls">
-          {/* View Toggle */}
-          {isSignedIn && (
-            <div className="view-toggle">
-              <button 
-                className={`view-btn ${viewMode === 'week' ? 'active' : ''}`}
-                onClick={() => setViewMode('week')}
-                title="Wochenansicht"
-              >
-                <LayoutGrid size={18} />
-              </button>
-              <button 
-                className={`view-btn ${viewMode === 'list' ? 'active' : ''}`}
-                onClick={() => setViewMode('list')}
-                title="Listenansicht"
-              >
-                <List size={18} />
-              </button>
-            </div>
-          )}
+        {/* Week Grid */}
+        <div className="grid grid-cols-7 gap-2">
+          {weekDates.map((date, index) => {
+            const events = getEventsForDate(date);
+            const today = isToday(date);
 
-          {/* Action buttons */}
-          {!isSignedIn ? (
-            <button onClick={handleSignIn} className="sign-in-btn">
-              <LogIn size={18} />
-              Mit Google anmelden
-            </button>
-          ) : (
-            <>
-              <button onClick={loadEvents} className="refresh-btn" disabled={isLoading}>
-                <RefreshCw size={18} className={isLoading ? 'spinning' : ''} />
-                Aktualisieren
-              </button>
-              <button onClick={() => setShowEventModal(true)} className="add-event-btn">
-                <CalendarPlus size={18} />
-                Neuer Termin
-              </button>
-              <button onClick={handleSignOut} className="sign-out-btn">
-                <LogOut size={18} />
-                Abmelden
-              </button>
-            </>
+            return (
+              <div
+                key={index}
+                className={`border rounded-lg p-2 min-h-[150px] ${
+                  today 
+                    ? `${themeClasses.todayBg} ${themeClasses.todayBorder} border-2` 
+                    : themeClasses.gridBorder
+                } ${themeClasses.gridBg}`}
+              >
+                <div className={`text-center mb-2 ${themeClasses.secondaryText}`}>
+                  <div className="text-xs">{dayNames[index]}</div>
+                  <div className={`text-lg font-semibold ${today ? 'text-green-600' : themeClasses.primaryText}`}>
+                    {date.getDate()}
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  {events.slice(0, 3).map((event) => (
+                    <div
+                      key={event.id}
+                      className={`p-1 rounded text-xs cursor-pointer ${themeClasses.eventBg} ${themeClasses.eventText} transition-colors`}
+                      onClick={() => setEditingEvent(event)}
+                      title={event.summary}
+                    >
+                      <div className="font-medium truncate">{event.summary}</div>
+                      <div className="text-xs opacity-75">
+                        {formatTime(event.start.dateTime)}
+                      </div>
+                    </div>
+                  ))}
+                  {events.length > 3 && (
+                    <div className={`text-xs text-center ${themeClasses.secondaryText}`}>
+                      +{events.length - 3} mehr
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  // List View Component
+  const ListView = () => {
+    const sortedEvents = [...calendarEvents].sort((a, b) => {
+      const dateA = new Date(a.start.dateTime || a.start.date);
+      const dateB = new Date(b.start.dateTime || b.start.date);
+      return dateA - dateB;
+    });
+
+    return (
+      <div className={`${themeClasses.containerBg} rounded-xl p-6 shadow-sm`}>
+        <div className="space-y-3">
+          {sortedEvents.map((event) => {
+            const eventDate = new Date(event.start.dateTime || event.start.date);
+            const today = isToday(eventDate);
+            
+            return (
+              <div
+                key={event.id}
+                className={`p-4 rounded-lg border ${
+                  today 
+                    ? `${themeClasses.todayBg} ${themeClasses.todayBorder}` 
+                    : themeClasses.gridBorder
+                } ${theme === 'light' ? 'hover:bg-gray-50' : 'hover:bg-gray-700'} transition-colors cursor-pointer`}
+                onClick={() => setEditingEvent(event)}
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <h3 className={`font-semibold ${themeClasses.primaryText}`}>{event.summary}</h3>
+                    {event.description && (
+                      <p className={`text-sm mt-1 ${themeClasses.secondaryText}`}>{event.description}</p>
+                    )}
+                    <div className={`flex items-center gap-4 mt-2 text-sm ${themeClasses.secondaryText}`}>
+                      <span className="flex items-center gap-1">
+                        <Calendar size={14} />
+                        {eventDate.toLocaleDateString('de-DE')}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Clock size={14} />
+                        {formatTime(event.start.dateTime)}
+                      </span>
+                      {event.location && (
+                        <span className="flex items-center gap-1">
+                          <MapPin size={14} />
+                          {event.location}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteEvent(event.id);
+                    }}
+                    className="p-2 text-red-500 hover:bg-red-100 rounded-lg transition-colors"
+                  >
+                    <CalendarX size={16} />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+          
+          {sortedEvents.length === 0 && (
+            <div className={`text-center py-12 ${themeClasses.secondaryText}`}>
+              <Calendar size={48} className="mx-auto mb-4 opacity-20" />
+              <p>Keine Events vorhanden</p>
+            </div>
           )}
         </div>
       </div>
+    );
+  };
 
-      {/* Main content */}
-      {isSignedIn && (
-        <div className="calendar-content">
+  return (
+    <div className="space-y-4">
+      {!isSignedIn ? (
+        <div className={`${themeClasses.containerBg} rounded-xl p-8 text-center shadow-sm`}>
+          <CalendarDays size={64} className={`mx-auto mb-4 ${themeClasses.secondaryText} opacity-50`} />
+          <h3 className={`text-xl font-semibold mb-2 ${themeClasses.primaryText}`}>Google Calendar verbinden</h3>
+          <p className={`mb-6 ${themeClasses.secondaryText}`}>
+            Melde dich an, um deine Google Calendar Events zu sehen und zu verwalten
+          </p>
+          <button
+            onClick={handleSignIn}
+            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors inline-flex items-center gap-2"
+          >
+            <LogIn size={20} />
+            Mit Google anmelden
+          </button>
+        </div>
+      ) : (
+        <>
+          {/* Header with actions */}
+          <div className={`${themeClasses.containerBg} rounded-xl p-4 shadow-sm`}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <CheckCircle className="text-green-500" size={24} />
+                <span className={`font-medium ${themeClasses.primaryText}`}>
+                  Verbunden als {GoogleCalendarService.getUserEmail()}
+                </span>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={loadEvents}
+                  disabled={isLoading}
+                  className={`px-4 py-2 rounded-lg ${themeClasses.buttonBg} ${themeClasses.buttonText} transition-colors flex items-center gap-2`}
+                >
+                  <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
+                  Aktualisieren
+                </button>
+                
+                <button
+                  onClick={() => setShowEventModal(true)}
+                  className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center gap-2"
+                >
+                  <CalendarPlus size={16} />
+                  Neues Event
+                </button>
+                
+                <button
+                  onClick={handleSignOut}
+                  className="px-4 py-2 text-red-500 hover:bg-red-100 rounded-lg transition-colors flex items-center gap-2"
+                >
+                  <LogOut size={16} />
+                  Abmelden
+                </button>
+              </div>
+            </div>
+            
+            {status && (
+              <div className={`mt-2 text-sm ${themeClasses.secondaryText}`}>{status}</div>
+            )}
+          </div>
+
+          {/* Calendar View */}
           {isLoading ? (
-            <div className="loading-state">
-              <Loader2 className="spinning" size={32} />
-              <p>Termine werden geladen...</p>
+            <div className={`${themeClasses.containerBg} rounded-xl p-12 text-center shadow-sm`}>
+              <Loader2 size={48} className={`mx-auto mb-4 animate-spin ${themeClasses.secondaryText}`} />
+              <p className={themeClasses.secondaryText}>Lade Events...</p>
             </div>
           ) : (
             viewMode === 'week' ? <WeekView /> : <ListView />
           )}
-        </div>
+        </>
       )}
 
       {/* Event Modal */}
       {showEventModal && (
-        <div className="modal-overlay" onClick={() => setShowEventModal(false)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <h3>{editingEvent ? 'Termin bearbeiten' : 'Neuer Termin'}</h3>
+        <div className={`fixed inset-0 ${themeClasses.modalOverlay} flex items-center justify-center z-50`}>
+          <div className={`${themeClasses.modalBg} rounded-xl p-6 max-w-md w-full mx-4`}>
+            <h2 className={`text-xl font-semibold mb-4 ${themeClasses.primaryText}`}>
+              Neues Event erstellen
+            </h2>
             
-            <div className="form-group">
-              <label>Titel *</label>
+            <div className="space-y-3">
               <input
                 type="text"
                 value={newEvent.summary}
                 onChange={(e) => setNewEvent({...newEvent, summary: e.target.value})}
-                placeholder="z.B. Meeting mit Team"
+                placeholder="Titel"
+                className={`w-full px-4 py-2 border rounded-lg ${themeClasses.inputBg} ${themeClasses.inputText} focus:outline-none focus:ring-2 focus:ring-purple-500`}
               />
-            </div>
-
-            <div className="form-group">
-              <label>
-                <input
-                  type="checkbox"
-                  checked={newEvent.isAllDay}
-                  onChange={(e) => setNewEvent({...newEvent, isAllDay: e.target.checked})}
-                />
-                Ganztägig
-              </label>
-            </div>
-
-            <div className="form-row">
-              <div className="form-group">
-                <label>Startdatum *</label>
-                <input
-                  type="date"
-                  value={newEvent.startDate}
-                  onChange={(e) => setNewEvent({...newEvent, startDate: e.target.value})}
-                />
-              </div>
-              {!newEvent.isAllDay && (
-                <div className="form-group">
-                  <label>Startzeit *</label>
-                  <input
-                    type="time"
-                    value={newEvent.startTime}
-                    onChange={(e) => setNewEvent({...newEvent, startTime: e.target.value})}
-                  />
-                </div>
-              )}
-            </div>
-
-            <div className="form-row">
-              <div className="form-group">
-                <label>Enddatum</label>
-                <input
-                  type="date"
-                  value={newEvent.endDate}
-                  onChange={(e) => setNewEvent({...newEvent, endDate: e.target.value})}
-                />
-              </div>
-              {!newEvent.isAllDay && (
-                <div className="form-group">
-                  <label>Endzeit</label>
-                  <input
-                    type="time"
-                    value={newEvent.endTime}
-                    onChange={(e) => setNewEvent({...newEvent, endTime: e.target.value})}
-                  />
-                </div>
-              )}
-            </div>
-
-            <div className="form-group">
-              <label>Ort</label>
+              
+              <textarea
+                value={newEvent.description}
+                onChange={(e) => setNewEvent({...newEvent, description: e.target.value})}
+                placeholder="Beschreibung (optional)"
+                className={`w-full px-4 py-2 border rounded-lg ${themeClasses.inputBg} ${themeClasses.inputText} focus:outline-none focus:ring-2 focus:ring-purple-500`}
+                rows="3"
+              />
+              
               <input
                 type="text"
                 value={newEvent.location}
                 onChange={(e) => setNewEvent({...newEvent, location: e.target.value})}
-                placeholder="z.B. Büro, Online, etc."
+                placeholder="Ort (optional)"
+                className={`w-full px-4 py-2 border rounded-lg ${themeClasses.inputBg} ${themeClasses.inputText} focus:outline-none focus:ring-2 focus:ring-purple-500`}
               />
+              
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="allDay"
+                  checked={newEvent.isAllDay}
+                  onChange={(e) => setNewEvent({...newEvent, isAllDay: e.target.checked})}
+                  className="w-4 h-4"
+                />
+                <label htmlFor="allDay" className={`text-sm ${themeClasses.primaryText}`}>
+                  Ganztägig
+                </label>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={`text-xs ${themeClasses.secondaryText}`}>Start</label>
+                  <input
+                    type="date"
+                    value={newEvent.startDate}
+                    onChange={(e) => setNewEvent({...newEvent, startDate: e.target.value})}
+                    className={`w-full px-4 py-2 border rounded-lg ${themeClasses.inputBg} ${themeClasses.inputText} focus:outline-none focus:ring-2 focus:ring-purple-500`}
+                  />
+                  {!newEvent.isAllDay && (
+                    <input
+                      type="time"
+                      value={newEvent.startTime}
+                      onChange={(e) => setNewEvent({...newEvent, startTime: e.target.value})}
+                      className={`w-full mt-2 px-4 py-2 border rounded-lg ${themeClasses.inputBg} ${themeClasses.inputText} focus:outline-none focus:ring-2 focus:ring-purple-500`}
+                    />
+                  )}
+                </div>
+                
+                <div>
+                  <label className={`text-xs ${themeClasses.secondaryText}`}>Ende</label>
+                  <input
+                    type="date"
+                    value={newEvent.endDate}
+                    onChange={(e) => setNewEvent({...newEvent, endDate: e.target.value})}
+                    className={`w-full px-4 py-2 border rounded-lg ${themeClasses.inputBg} ${themeClasses.inputText} focus:outline-none focus:ring-2 focus:ring-purple-500`}
+                  />
+                  {!newEvent.isAllDay && (
+                    <input
+                      type="time"
+                      value={newEvent.endTime}
+                      onChange={(e) => setNewEvent({...newEvent, endTime: e.target.value})}
+                      className={`w-full mt-2 px-4 py-2 border rounded-lg ${themeClasses.inputBg} ${themeClasses.inputText} focus:outline-none focus:ring-2 focus:ring-purple-500`}
+                    />
+                  )}
+                </div>
+              </div>
             </div>
-
-            <div className="form-group">
-              <label>Beschreibung</label>
-              <textarea
-                value={newEvent.description}
-                onChange={(e) => setNewEvent({...newEvent, description: e.target.value})}
-                rows="3"
-                placeholder="Zusätzliche Informationen..."
-              />
-            </div>
-
-            <div className="modal-actions">
-              <button onClick={() => {
-                setShowEventModal(false);
-                setEditingEvent(null);
-                resetEventForm();
-              }} className="cancel-btn">
+            
+            <div className="flex justify-end gap-2 mt-6">
+              <button
+                onClick={() => setShowEventModal(false)}
+                className={`px-4 py-2 rounded-lg ${themeClasses.buttonBg} ${themeClasses.buttonText} transition-colors`}
+              >
                 Abbrechen
               </button>
-              <button 
-                onClick={editingEvent ? handleUpdateEvent : handleCreateEvent}
-                className="save-btn"
-                disabled={!newEvent.summary || !newEvent.startDate}
+              <button
+                onClick={createEvent}
+                disabled={isLoading}
+                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
               >
-                {editingEvent ? 'Speichern' : 'Erstellen'}
+                {isLoading ? 'Erstelle...' : 'Erstellen'}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      <style jsx>{`
-        .calendar-container {
-          padding: 20px;
-          background: #1a1a1a;
-          border-radius: 8px;
-          min-height: 500px;
-        }
-
-        .calendar-header-bar {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 20px;
-          padding-bottom: 15px;
-          border-bottom: 1px solid #333;
-        }
-
-        .header-left {
-          display: flex;
-          align-items: center;
-          gap: 15px;
-        }
-
-        .header-left h3 {
-          margin: 0;
-          color: #fff;
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-
-        .inline-icon {
-          display: inline-block;
-        }
-
-        .status-message {
-          color: #888;
-          font-size: 14px;
-        }
-
-        .header-controls {
-          display: flex;
-          gap: 10px;
-          align-items: center;
-        }
-
-        /* View Toggle */
-        .view-toggle {
-          display: flex;
-          background: #2a2a2a;
-          border-radius: 6px;
-          padding: 2px;
-          margin-right: 10px;
-        }
-
-        .view-btn {
-          padding: 6px 12px;
-          background: transparent;
-          border: none;
-          color: #888;
-          cursor: pointer;
-          border-radius: 4px;
-          display: flex;
-          align-items: center;
-          transition: all 0.2s;
-        }
-
-        .view-btn.active {
-          background: #4CAF50;
-          color: white;
-        }
-
-        .view-btn:hover:not(.active) {
-          background: #333;
-          color: #fff;
-        }
-
-        /* Week View Styles */
-        .week-view {
-          background: #2a2a2a;
-          border-radius: 8px;
-          padding: 20px;
-        }
-
-        .week-navigation {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 15px;
-          margin-bottom: 20px;
-        }
-
-        .nav-btn {
-          padding: 6px 10px;
-          background: #333;
-          border: none;
-          color: #fff;
-          border-radius: 4px;
-          cursor: pointer;
-        }
-
-        .nav-btn:hover {
-          background: #444;
-        }
-
-        .today-btn {
-          padding: 6px 16px;
-          background: #4CAF50;
-          border: none;
-          color: white;
-          border-radius: 4px;
-          cursor: pointer;
-        }
-
-        .today-btn:hover {
-          background: #45a049;
-        }
-
-        .week-label {
-          color: #fff;
-          font-weight: 500;
-          min-width: 150px;
-          text-align: center;
-        }
-
-        .calendar-grid {
-          border: 1px solid #333;
-          border-radius: 8px;
-          overflow: hidden;
-        }
-
-        .calendar-header {
-          display: grid;
-          grid-template-columns: repeat(7, 1fr);
-          background: #333;
-        }
-
-        .day-header {
-          padding: 12px 8px;
-          text-align: center;
-          border-right: 1px solid #444;
-        }
-
-        .day-header:last-child {
-          border-right: none;
-        }
-
-        .day-header.today {
-          background: #4CAF50;
-        }
-
-        .day-name {
-          color: #aaa;
-          font-size: 12px;
-          margin-bottom: 4px;
-        }
-
-        .day-header.today .day-name {
-          color: #fff;
-        }
-
-        .day-date {
-          color: #fff;
-          font-size: 16px;
-          font-weight: 500;
-        }
-
-        .calendar-body {
-          display: grid;
-          grid-template-columns: repeat(7, 1fr);
-          min-height: 400px;
-        }
-
-        .day-column {
-          border-right: 1px solid #333;
-          padding: 8px;
-          background: #1a1a1a;
-          min-height: 100px;
-        }
-
-        .day-column:last-child {
-          border-right: none;
-        }
-
-        .today-column {
-          background: rgba(76, 175, 80, 0.1);
-        }
-
-        .no-events {
-          color: #555;
-          text-align: center;
-          padding: 10px;
-        }
-
-        .event-card {
-          background: #333;
-          border-left: 3px solid #4CAF50;
-          padding: 6px;
-          margin-bottom: 6px;
-          border-radius: 4px;
-          cursor: pointer;
-          transition: background 0.2s;
-        }
-
-        .event-card:hover {
-          background: #3a3a3a;
-        }
-
-        .event-time {
-          color: #4CAF50;
-          font-size: 11px;
-          font-weight: 500;
-        }
-
-        .event-title {
-          color: #fff;
-          font-size: 13px;
-          margin-top: 2px;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-        }
-
-        .event-card .event-location {
-          color: #888;
-          font-size: 11px;
-          margin-top: 2px;
-          display: flex;
-          align-items: center;
-          gap: 3px;
-        }
-
-        /* List View Styles (existing) */
-        .events-list {
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
-        }
-
-        .event-item {
-          background: #2a2a2a;
-          border-radius: 8px;
-          padding: 15px;
-          border-left: 4px solid #4CAF50;
-        }
-
-        .event-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 10px;
-        }
-
-        .event-header h4 {
-          margin: 0;
-          color: #fff;
-        }
-
-        .event-actions {
-          display: flex;
-          gap: 8px;
-        }
-
-        .edit-btn, .delete-btn {
-          padding: 6px;
-          background: #333;
-          border: none;
-          color: #fff;
-          border-radius: 4px;
-          cursor: pointer;
-        }
-
-        .edit-btn:hover {
-          background: #4CAF50;
-        }
-
-        .delete-btn:hover {
-          background: #f44336;
-        }
-
-        .event-details {
-          display: flex;
-          gap: 20px;
-          color: #888;
-          font-size: 14px;
-          margin-bottom: 8px;
-        }
-
-        .event-date, .event-location {
-          display: flex;
-          align-items: center;
-          gap: 5px;
-        }
-
-        .event-description {
-          color: #aaa;
-          font-size: 14px;
-          margin: 8px 0 0 0;
-        }
-
-        /* Loading state */
-        .loading-state {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          padding: 40px;
-          color: #888;
-        }
-
-        .spinning {
-          animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-
-        /* Modal styles */
-        .modal-overlay {
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background: rgba(0, 0, 0, 0.8);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          z-index: 1000;
-        }
-
-        .modal-content {
-          background: #2a2a2a;
-          border-radius: 8px;
-          padding: 25px;
-          max-width: 500px;
-          width: 90%;
-          max-height: 80vh;
-          overflow-y: auto;
-        }
-
-        .modal-content h3 {
-          margin: 0 0 20px 0;
-          color: #fff;
-        }
-
-        .form-group {
-          margin-bottom: 15px;
-        }
-
-        .form-group label {
-          display: block;
-          color: #aaa;
-          margin-bottom: 5px;
-          font-size: 14px;
-        }
-
-        .form-group input[type="text"],
-        .form-group input[type="date"],
-        .form-group input[type="time"],
-        .form-group textarea {
-          width: 100%;
-          padding: 8px 12px;
-          background: #1a1a1a;
-          border: 1px solid #333;
-          border-radius: 4px;
-          color: #fff;
-        }
-
-        .form-group input[type="checkbox"] {
-          margin-right: 8px;
-        }
-
-        .form-row {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 15px;
-        }
-
-        .modal-actions {
-          display: flex;
-          justify-content: flex-end;
-          gap: 10px;
-          margin-top: 20px;
-        }
-
-        .cancel-btn, .save-btn {
-          padding: 8px 20px;
-          border: none;
-          border-radius: 4px;
-          cursor: pointer;
-          font-weight: 500;
-        }
-
-        .cancel-btn {
-          background: #333;
-          color: #fff;
-        }
-
-        .cancel-btn:hover {
-          background: #444;
-        }
-
-        .save-btn {
-          background: #4CAF50;
-          color: white;
-        }
-
-        .save-btn:hover {
-          background: #45a049;
-        }
-
-        .save-btn:disabled {
-          background: #555;
-          cursor: not-allowed;
-        }
-
-        /* Button styles */
-        .sign-in-btn, .refresh-btn, .add-event-btn, .sign-out-btn {
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          padding: 8px 16px;
-          border: none;
-          border-radius: 4px;
-          cursor: pointer;
-          font-weight: 500;
-          transition: background 0.2s;
-        }
-
-        .sign-in-btn {
-          background: #4285f4;
-          color: white;
-        }
-
-        .sign-in-btn:hover {
-          background: #357ae8;
-        }
-
-        .refresh-btn {
-          background: #333;
-          color: #fff;
-        }
-
-        .refresh-btn:hover {
-          background: #444;
-        }
-
-        .add-event-btn {
-          background: #4CAF50;
-          color: white;
-        }
-
-        .add-event-btn:hover {
-          background: #45a049;
-        }
-
-        .sign-out-btn {
-          background: #333;
-          color: #fff;
-        }
-
-        .sign-out-btn:hover {
-          background: #f44336;
-        }
-
-        .no-events-message {
-          text-align: center;
-          color: #888;
-          padding: 40px;
-        }
-      `}</style>
+      {/* Edit Event Modal */}
+      {editingEvent && (
+        <div className={`fixed inset-0 ${themeClasses.modalOverlay} flex items-center justify-center z-50`}>
+          <div className={`${themeClasses.modalBg} rounded-xl p-6 max-w-md w-full mx-4`}>
+            <h2 className={`text-xl font-semibold mb-4 ${themeClasses.primaryText}`}>Event Details</h2>
+            
+            <div className="space-y-3">
+              <div>
+                <h3 className={`font-semibold ${themeClasses.primaryText}`}>{editingEvent.summary}</h3>
+                {editingEvent.description && (
+                  <p className={`mt-2 ${themeClasses.secondaryText}`}>{editingEvent.description}</p>
+                )}
+              </div>
+              
+              <div className={`space-y-2 text-sm ${themeClasses.secondaryText}`}>
+                <div className="flex items-center gap-2">
+                  <Calendar size={16} />
+                  <span>
+                    {new Date(editingEvent.start.dateTime || editingEvent.start.date).toLocaleDateString('de-DE', {
+                      weekday: 'long',
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric'
+                    })}
+                  </span>
+                </div>
+                
+                <div className="flex items-center gap-2">
+                  <Clock size={16} />
+                  <span>
+                    {formatTime(editingEvent.start.dateTime)} - {formatTime(editingEvent.end.dateTime)}
+                  </span>
+                </div>
+                
+                {editingEvent.location && (
+                  <div className="flex items-center gap-2">
+                    <MapPin size={16} />
+                    <span>{editingEvent.location}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            <div className="flex justify-between mt-6">
+              <button
+                onClick={() => {
+                  deleteEvent(editingEvent.id);
+                  setEditingEvent(null);
+                }}
+                className="px-4 py-2 text-red-500 hover:bg-red-100 rounded-lg transition-colors"
+              >
+                Löschen
+              </button>
+              
+              <button
+                onClick={() => setEditingEvent(null)}
+                className={`px-4 py-2 rounded-lg ${themeClasses.buttonBg} ${themeClasses.buttonText} transition-colors`}
+              >
+                Schließen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
