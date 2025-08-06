@@ -168,12 +168,12 @@ function App() {
 
   // Execute AI suggestion
   const executeSuggestion = async (task, suggestion) => {
-    setStatus(\`🤖 \${suggestion.text} wird vorbereitet...\`);
+    setStatus(`🤖 ${suggestion.text} wird vorbereitet...`);
     setIsProcessing(true);
     
     // Hier später: n8n Webhook triggern
     setTimeout(() => {
-      setStatus(\`✨ \${suggestion.text} - Bereit zur Ausführung\`);
+      setStatus(`✨ ${suggestion.text} - Bereit zur Ausführung`);
       setIsProcessing(false);
       
       // Erhöhe Progress um 25%
@@ -333,11 +333,11 @@ function App() {
             <button
               onClick={isRecording ? stopRecording : startRecording}
               disabled={isProcessing}
-              className={\`p-4 rounded-full transition-all transform \${
+              className={`p-4 rounded-full transition-all transform ${
                 isRecording 
                   ? 'bg-red-500 hover:bg-red-600 animate-pulse scale-110' 
                   : 'bg-blue-500 hover:bg-blue-600 hover:scale-105'
-              } text-white shadow-lg disabled:opacity-50\`}
+              } text-white shadow-lg disabled:opacity-50`}
             >
               {isRecording ? <MicOff size={28} /> : <Mic size={28} />}
             </button>
@@ -408,11 +408,11 @@ function App() {
           <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
             <button
               onClick={() => setSelectedCategory('alle')}
-              className={\`px-3 py-1 rounded-full text-sm whitespace-nowrap \${
+              className={`px-3 py-1 rounded-full text-sm whitespace-nowrap ${
                 selectedCategory === 'alle' 
                   ? 'bg-white/30 text-white' 
                   : 'bg-white/10 text-white/70 hover:bg-white/20'
-              }\`}
+              }`}
             >
               Alle ({tasks.length})
             </button>
@@ -422,11 +422,11 @@ function App() {
                 <button
                   key={cat.id}
                   onClick={() => setSelectedCategory(cat.id)}
-                  className={\`px-3 py-1 rounded-full text-sm whitespace-nowrap \${
+                  className={`px-3 py-1 rounded-full text-sm whitespace-nowrap ${
                     selectedCategory === cat.id 
                       ? 'bg-white/30 text-white' 
                       : 'bg-white/10 text-white/70 hover:bg-white/20'
-                  }\`}
+                  }`}
                 >
                   {cat.label} ({count})
                 </button>
@@ -460,12 +460,12 @@ function App() {
                           
                           {/* Deadline Badge */}
                           {task.deadline && (
-                            <span className={\`px-2 py-1 rounded-full flex items-center gap-1 \${
+                            <span className={`px-2 py-1 rounded-full flex items-center gap-1 ${
                               deadlineStatus === 'overdue' ? 'bg-red-500/50 text-white' :
                               deadlineStatus === 'today' ? 'bg-orange-500/50 text-white' :
                               deadlineStatus === 'tomorrow' ? 'bg-yellow-500/50 text-white' :
                               'bg-white/20 text-white/80'
-                            }\`}>
+                            }`}>
                               <Clock size={12} />
                               {new Date(task.deadline).toLocaleDateString('de-DE', { 
                                 day: '2-digit', 
@@ -493,14 +493,14 @@ function App() {
                       </div>
                       <div className="bg-white/20 rounded-full h-2 overflow-hidden">
                         <div 
-                          className={\`h-full transition-all duration-500 \${
+                          className={`h-full transition-all duration-500 ${
                             task.progress === 100 ? 'bg-green-500' :
                             task.progress >= 75 ? 'bg-blue-500' :
                             task.progress >= 50 ? 'bg-yellow-500' :
                             task.progress >= 25 ? 'bg-orange-500' :
                             'bg-gray-500'
-                          }\`}
-                          style={{ width: \`\${task.progress}%\` }}
+                          }`}
+                          style={{ width: `${task.progress}%` }}
                         />
                       </div>
                       
@@ -510,11 +510,11 @@ function App() {
                           <button
                             key={value}
                             onClick={() => updateProgress(task.id, value)}
-                            className={\`flex-1 py-1 text-xs rounded transition-colors \${
+                            className={`flex-1 py-1 text-xs rounded transition-colors ${
                               task.progress >= value 
                                 ? 'bg-white/30 text-white' 
                                 : 'bg-white/10 text-white/60 hover:bg-white/20'
-                            }\`}
+                            }`}
                           >
                             {value}%
                           </button>
