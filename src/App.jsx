@@ -20,7 +20,17 @@ function App() {
   
   const [tasks, setTasks] = useState(() => {
     const saved = localStorage.getItem('flowlife_tasks');
-    return saved ? JSON.parse(saved) : [];
+    if (saved) {
+      // Fix für alte Tasks ohne tags Array
+      const parsedTasks = JSON.parse(saved);
+      return parsedTasks.map(task => ({
+        ...task,
+        tags: task.tags || [],
+        attachments: task.attachments || [],
+        subtasks: task.subtasks || []
+      }));
+    }
+    return [];
   });
   
   const [newTaskInput, setNewTaskInput] = useState('');
@@ -173,7 +183,7 @@ function App() {
   const filteredTasks = tasks.filter(task => {
     const matchesSearch = task.title.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesTags = selectedTags.length === 0 || 
-      selectedTags.some(tag => task.tags.includes(tag));
+      selectedTags.some(tag => (task.tags || []).includes(tag));
     const matchesPriority = selectedPriority === 'all' || task.priority === selectedPriority;
     const matchesCompleted = showCompleted || !task.completed;
     
@@ -193,7 +203,7 @@ function App() {
     }).length
   };
 
-  const allTags = [...new Set(tasks.flatMap(task => task.tags))];
+  const allTags = [...new Set(tasks.flatMap(task => task.tags || []))];
 
   return (
     <div className={`min-h-screen ${themeClasses.mainBg} flex`}>
@@ -410,7 +420,7 @@ function App() {
                           <div className={`font-medium ${task.completed ? 'line-through ' + themeClasses.secondaryText : themeClasses.primaryText}`}>
                             {task.title}
                           </div>
-                          {task.tags.length > 0 && (
+                          {task.tags && task.tags.length > 0 && (
                             <div className="flex gap-2 mt-1">
                               {task.tags.map(tag => (
                                 <span key={tag} className={`text-xs px-2 py-1 rounded-full ${themeClasses.tagBg} ${themeClasses.tagText}`}>
