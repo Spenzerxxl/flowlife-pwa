@@ -106,7 +106,7 @@ function App() {
     setSyncing(true);
     try {
       const tasksData = await tasksService.getTasks();
-      setTasks(tasksData.data || []);
+      setTasks(tasksData);
       setLastSync(new Date());
       setStatus('Aufgaben synchronisiert');
     } catch (error) {
