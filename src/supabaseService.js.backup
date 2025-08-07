@@ -49,7 +49,7 @@ export const authService = {
     }
   },
 
-  // Sign out current user
+  // Sign out
   async signOut() {
     try {
       const { error } = await supabase.auth.signOut();
@@ -86,78 +86,56 @@ export const tasksService = {
   // Get all tasks for current user
   async getTasks() {
     try {
-      const user = await authService.getCurrentUser();
-      if (!user) throw new Error('User not authenticated');
-
       const { data, error } = await supabase
         .from('tasks')
         .select('*')
-        .eq('user_id', user.id)
         .order('created_at', { ascending: false });
       
       if (error) throw error;
       
-      return {
-        success: true,
-        data: data || []
-      };
+      // Map database structure to app structure
+      return data.map(task => ({
+        id: task.id,
+        title: task.title,
+        description: task.description || '',
+        category: task.category || 'Allgemein',
+        deadline: task.deadline,
+        completed: task.status === 'completed',
+        progress: task.progress || 0,
+        googleEventId: task.google_event_id,
+        status: task.status,
+        createdAt: task.created_at,
+        updatedAt: task.updated_at
+      }));
     } catch (error) {
       console.error('Get tasks error:', error);
-      return {
-        success: false,
-        error: error.message,
-        data: []
-      };
+      return [];
     }
   },
 
   // Create new task
   async createTask(taskData) {
     try {
-      console.log('[DEBUG] createTask called with:', taskData);
-      
       const user = await authService.getCurrentUser();
-      console.log('[DEBUG] Current user:', user);
-      
-      if (!user) {
-        console.error('[DEBUG] No user authenticated!');
-        throw new Error('User not authenticated');
-      }
-
-      // Prepare metadata object for additional data
-      const metadata = {};
-      if (taskData.googleEventId) {
-        metadata.google_event_id = taskData.googleEventId;
-      }
-
-      const insertData = {
-        user_id: user.id,
-        title: taskData.title,
-        description: taskData.description || null,
-        category: taskData.category || 'Allgemein',
-        deadline: taskData.deadline || null,
-        status: 'open',
-        progress: 0,
-        voice_created: taskData.voiceCreated || false,
-        metadata: Object.keys(metadata).length > 0 ? metadata : {}
-      };
-      
-      console.log('[DEBUG] Insert data:', insertData);
+      if (!user) throw new Error('User not authenticated');
 
       const { data, error } = await supabase
         .from('tasks')
-        .insert([insertData])
+        .insert([{
+          user_id: user.id,
+          title: taskData.title,
+          description: taskData.description || null,
+          category: taskData.category || 'Allgemein',
+          deadline: taskData.deadline || null,
+          status: 'open',
+          progress: 0,
+          google_event_id: taskData.googleEventId || null,
+          voice_created: taskData.voiceCreated || false
+        }])
         .select()
         .single();
       
-      console.log('[DEBUG] Supabase response:', { data, error });
-      
-      if (error) {
-        console.error('[DEBUG] Supabase error details:', error);
-        throw error;
-      }
-      
-      console.log('[DEBUG] Task created successfully:', data);
+      if (error) throw error;
       
       return {
         success: true,
@@ -167,109 +145,85 @@ export const tasksService = {
           description: data.description || '',
           category: data.category,
           deadline: data.deadline,
-          status: data.status,
+          completed: false,
           progress: data.progress,
-          googleEventId: data.metadata?.google_event_id || null,
-          voiceCreated: data.voice_created
+          googleEventId: data.google_event_id
         }
       };
     } catch (error) {
-      console.error('[DEBUG] createTask error:', error);
-      return {
-        success: false,
-        error: error.message
-      };
+      console.error('Create task error:', error);
+      return { success: false, error: error.message };
     }
   },
 
   // Update task
   async updateTask(taskId, updates) {
     try {
-      const user = await authService.getCurrentUser();
-      if (!user) throw new Error('User not authenticated');
-
-      // Handle googleEventId if present in updates
-      if (updates.googleEventId !== undefined) {
-        const currentTask = await supabase
-          .from('tasks')
-          .select('metadata')
-          .eq('id', taskId)
-          .single();
-        
-        const metadata = currentTask.data?.metadata || {};
-        if (updates.googleEventId) {
-          metadata.google_event_id = updates.googleEventId;
+      const updateData = {};
+      
+      // Map app fields to database fields
+      if (updates.title !== undefined) updateData.title = updates.title;
+      if (updates.description !== undefined) updateData.description = updates.description;
+      if (updates.category !== undefined) updateData.category = updates.category;
+      if (updates.deadline !== undefined) updateData.deadline = updates.deadline;
+      if (updates.progress !== undefined) updateData.progress = updates.progress;
+      if (updates.googleEventId !== undefined) updateData.google_event_id = updates.googleEventId;
+      
+      // Handle completed status
+      if (updates.completed !== undefined) {
+        updateData.status = updates.completed ? 'completed' : 'open';
+        if (updates.completed) {
+          updateData.completed_at = new Date().toISOString();
         } else {
-          delete metadata.google_event_id;
+          updateData.completed_at = null;
         }
-        updates.metadata = metadata;
-        delete updates.googleEventId;
       }
 
       const { data, error } = await supabase
         .from('tasks')
-        .update(updates)
+        .update(updateData)
         .eq('id', taskId)
-        .eq('user_id', user.id)
         .select()
         .single();
       
       if (error) throw error;
       
-      return {
-        success: true,
-        data: {
-          ...data,
-          googleEventId: data.metadata?.google_event_id || null
-        }
-      };
+      return { success: true, data };
     } catch (error) {
       console.error('Update task error:', error);
-      return {
-        success: false,
-        error: error.message
-      };
+      return { success: false, error: error.message };
     }
   },
 
   // Delete task
   async deleteTask(taskId) {
     try {
-      const user = await authService.getCurrentUser();
-      if (!user) throw new Error('User not authenticated');
-
       const { error } = await supabase
         .from('tasks')
         .delete()
-        .eq('id', taskId)
-        .eq('user_id', user.id);
+        .eq('id', taskId);
       
       if (error) throw error;
       
       return { success: true };
     } catch (error) {
       console.error('Delete task error:', error);
-      return {
-        success: false,
-        error: error.message
-      };
+      return { success: false, error: error.message };
     }
   },
 
-  // Subscribe to task changes
-  subscribeToChanges(userId, callback) {
+  // Subscribe to real-time changes
+  subscribeToChanges(callback) {
     const subscription = supabase
-      .channel(`tasks:${userId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'tasks',
-          filter: `user_id=eq.${userId}`
-        },
+      .channel('tasks_changes')
+      .on('postgres_changes', 
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'tasks' 
+        }, 
         (payload) => {
-          console.log('Task change detected:', payload);
+          console.log('Task change:', payload);
           callback(payload);
         }
       )
@@ -278,7 +232,7 @@ export const tasksService = {
     return subscription;
   },
 
-  // Unsubscribe from changes
+  // Unsubscribe from real-time changes
   unsubscribeFromChanges(subscription) {
     if (subscription) {
       supabase.removeChannel(subscription);
@@ -286,10 +240,11 @@ export const tasksService = {
   }
 };
 
-// Export Supabase client for direct access if needed
+// Export supabase client for direct access if needed
 export { supabase };
 
 export default {
-  authService,
-  tasksService
+  auth: authService,
+  tasks: tasksService,
+  supabase
 };

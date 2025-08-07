@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Supabase Test</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <h1>Supabase Connection Test</h1>
+    <button onclick="testConnection()">Test Connection</button>
+    <button onclick="testAuth()">Test Auth</button>
+    <button onclick="testCreateTask()">Test Create Task</button>
+    <pre id="output"></pre>
+
+    <script>
+        const supabaseUrl = 'https://database.frankrath.de';
+        const supabaseKey = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJzdXBhYmFzZSIsImlhdCI6MTc0NzA3MzU4MCwiZXhwIjo0OTAyNzQ3MTgwLCJyb2xlIjoiYW5vbiJ9.0l5w0smQh1FDN-nGnfmNbX80smyL-XcQM9C69OwE3Vo';
+        const supabase = supabase.createClient(supabaseUrl, supabaseKey);
+        
+        const output = document.getElementById('output');
+        
+        async function testConnection() {
+            output.textContent = 'Testing connection...\n';
+            try {
+                const { data, error } = await supabase.from('tasks').select('count');
+                output.textContent += 'Connection: ' + (error ? 'FAILED - ' + error.message : 'SUCCESS');
+            } catch (e) {
+                output.textContent += 'Error: ' + e.message;
+            }
+        }
+        
+        async function testAuth() {
+            output.textContent = 'Testing auth...\n';
+            const { data: { user } } = await supabase.auth.getUser();
+            output.textContent += 'User: ' + JSON.stringify(user, null, 2);
+        }
+        
+        async function testCreateTask() {
+            output.textContent = 'Creating test task...\n';
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) {
+                output.textContent += 'ERROR: Not logged in!';
+                return;
+            }
+            
+            const { data, error } = await supabase
+                .from('tasks')
+                .insert([{
+                    user_id: user.id,
+                    title: 'Test Task ' + new Date().toISOString(),
+                    category: 'Test',
+                    status: 'open',
+                    progress: 0
+                }])
+                .select();
+                
+            output.textContent += error ? 'ERROR: ' + error.message : 'SUCCESS: ' + JSON.stringify(data, null, 2);
+        }
+    </script>
+</body>
+</html>
