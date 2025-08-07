@@ -4,7 +4,7 @@ import {
   Mic, MicOff, Send, Loader2, Trash2, Plus, CheckCircle2, 
   Clock, Tag, AlertCircle, Mail, Phone, Calendar, 
   ChevronDown, ChevronUp, Sparkles, Target, X, Sun, Moon,
-  Pencil, Save, FileText, CalendarDays, Menu, Home, ListTodo,
+  Edit2, Save, FileText, CalendarDays, Menu, Home, ListTodo,
   ChevronRight, LogOut, RefreshCw
 } from 'lucide-react';
 import CalendarView from './CalendarView';
@@ -947,10 +947,10 @@ function App() {
                     {selectedTask.completed ? 'Wieder öffnen' : 'Als erledigt markieren'}
                   </button>
                   <button
-                    onClick={() => { console.log("Edit clicked"); setEditingTask(selectedTask); }}
+                    onClick={() => setEditingTask(selectedTask)}
                     className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
                   >
-                    <Pencil className="h-5 w-5" />
+                    <Edit2 className="h-5 w-5" />
                   </button>
                   <button
                     onClick={() => deleteTask(selectedTask.id)}
