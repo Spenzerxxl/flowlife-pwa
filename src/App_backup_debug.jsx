@@ -254,7 +254,6 @@ function App() {
 
     const result = await tasksService.createTask(task);
     
-    console.log("📝 DEBUG: Service result:", result);
     if (result.success) {
       setStatus('Aufgabe erstellt und synchronisiert!');
       setTranscript('');
@@ -281,7 +280,6 @@ function App() {
 
     const result = await tasksService.createTask(task);
     
-    console.log("📝 DEBUG: Service result:", result);
     if (result.success) {
       setManualTaskText('');
       setSelectedDeadline('');
@@ -295,31 +293,21 @@ function App() {
   };
 
   // ✅ FIX: Toggle Task Completion mit automatischem Progress-Update
-const toggleTaskComplete = async (taskId) => {
-    console.log("🔥 DEBUG: toggleTaskComplete called with taskId:", taskId);
+  const toggleTaskComplete = async (taskId) => {
     const task = tasks.find(t => t.id === taskId);
-    if (!task) {
-      console.log("❌ DEBUG: Task not found for ID:", taskId);
-      return;
-    }
-    console.log("✅ DEBUG: Found task:", task);
-    
-    // 🎯 LÖSUNG: Verwende status statt completed_at direkt!
-    // Der Datenbank-Trigger kümmert sich um completed_at und progress
-    const isCurrentlyCompleted = task.completed_at !== null || task.status === "completed";
-    const newStatus = isCurrentlyCompleted ? "open" : "completed";
-    const newProgress = isCurrentlyCompleted ? (task.progress || 0) : 100;
+    if (!task) return;
 
-    console.log("📞 DEBUG: Calling tasksService.updateTask with:", { status: newStatus, progress: newProgress });
+    const newCompleted = !task.completed;
+    const newProgress = newCompleted ? 100 : (task.progress || 0);
+
     const result = await tasksService.updateTask(taskId, {
-      status: newStatus,
+      completed: newCompleted,
       progress: newProgress
     });
 
-    console.log("📝 DEBUG: Service result:", result);
     if (result.success) {
       // ✅ Sofort lokalen State aktualisieren
-      const updatedTask = { ...task, status: newStatus, progress: newProgress, completed_at: newStatus === "completed" ? new Date().toISOString() : null };
+      const updatedTask = { ...task, completed: newCompleted, progress: newProgress };
       
       // Tasks Array aktualisieren
       setTasks(prev => prev.map(t => t.id === taskId ? updatedTask : t));
@@ -329,7 +317,7 @@ const toggleTaskComplete = async (taskId) => {
         setSelectedTask(updatedTask);
       }
       
-      setStatus(newStatus === 'completed' ? 'Aufgabe erledigt!' : 'Aufgabe wieder geöffnet');
+      setStatus(newCompleted ? 'Aufgabe erledigt!' : 'Aufgabe wieder geöffnet');
       
       // Background reload für Konsistenz
       loadTasks();
@@ -339,18 +327,10 @@ const toggleTaskComplete = async (taskId) => {
   // ✅ FIX: Update Task Progress mit sofortiger UI-Aktualisierung
   const updateTaskProgress = async (taskId, progress) => {
     const task = tasks.find(t => t.id === taskId);
-    if (!task) {
-      console.log("❌ DEBUG: Task not found for ID:", taskId);
-      return;
-    }
-    console.log("✅ DEBUG: Found task:", task);
-    // 🧹 CRITICAL: Lösche completed Feld um Schema-Konflikt zu vermeiden!
-    delete task.completed;
+    if (!task) return;
 
-    console.log("📞 DEBUG: Calling tasksService.updateTask with:", { taskId, progress });
     const result = await tasksService.updateTask(taskId, { progress });
     
-    console.log("📝 DEBUG: Service result:", result);
     if (result.success) {
       // ✅ Sofort lokalen State aktualisieren
       const updatedTask = { ...task, progress };
@@ -374,7 +354,6 @@ const toggleTaskComplete = async (taskId) => {
   const deleteTask = async (taskId) => {
     const result = await tasksService.deleteTask(taskId);
     
-    console.log("📝 DEBUG: Service result:", result);
     if (result.success) {
       setSelectedTask(null);
       setShowTaskModal(false);
@@ -394,7 +373,6 @@ const toggleTaskComplete = async (taskId) => {
       deadline: editingTask.deadline
     });
 
-    console.log("📝 DEBUG: Service result:", result);
     if (result.success) {
       setEditingTask(null);
       setSelectedTask(editingTask);
@@ -406,8 +384,8 @@ const toggleTaskComplete = async (taskId) => {
   // ✅ FIX: Erweiterte Filter für Erledigt-Kategorie
   const filteredTasks = () => {
     if (selectedCategory === 'alle') return tasks;
-    if (selectedCategory === 'erledigt') return tasks.filter(task => task.completed_at !== null);
-    if (selectedCategory === 'offen') return tasks.filter(task => task.completed_at === null);
+    if (selectedCategory === 'erledigt') return tasks.filter(task => task.completed);
+    if (selectedCategory === 'offen') return tasks.filter(task => !task.completed);
     return tasks.filter(task => task.category === selectedCategory);
   };
 
@@ -617,13 +595,13 @@ const toggleTaskComplete = async (taskId) => {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                 <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm">
                   <div className="text-3xl font-bold text-blue-600 dark:text-blue-400">
-                    {tasks.filter(t => t.completed_at === null).length}
+                    {tasks.filter(t => !t.completed).length}
                   </div>
                   <div className="text-sm text-gray-600 dark:text-gray-400">Offene Aufgaben</div>
                 </div>
                 <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm">
                   <div className="text-3xl font-bold text-green-600 dark:text-green-400">
-                    {tasks.filter(t => t.completed_at !== null).length}
+                    {tasks.filter(t => t.completed).length}
                   </div>
                   <div className="text-sm text-gray-600 dark:text-gray-400">Erledigt</div>
                 </div>
@@ -661,15 +639,15 @@ const toggleTaskComplete = async (taskId) => {
                             toggleTaskComplete(task.id);
                           }}
                           className={`w-5 h-5 rounded-full border-2 ${
-                            task.completed_at !== null
+                            task.completed
                               ? 'bg-green-500 border-green-500'
                               : 'border-gray-300 dark:border-gray-600'
                           }`}
                         >
-                          {task.completed_at !== null && <CheckCircle2 className="h-4 w-4 text-white" />}
+                          {task.completed && <CheckCircle2 className="h-4 w-4 text-white" />}
                         </button>
                         <div>
-                          <p className={`font-medium dark:text-white ${task.completed_at !== null ? 'line-through opacity-50' : ''}`}>
+                          <p className={`font-medium dark:text-white ${task.completed ? 'line-through opacity-50' : ''}`}>
                             {task.title}
                           </p>
                           <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -727,15 +705,15 @@ const toggleTaskComplete = async (taskId) => {
                               toggleTaskComplete(task.id);
                             }}
                             className={`w-5 h-5 rounded-full border-2 mt-0.5 ${
-                              task.completed_at !== null
+                              task.completed
                                 ? 'bg-green-500 border-green-500'
                                 : 'border-gray-300 dark:border-gray-600'
                             }`}
                           >
-                            {task.completed_at !== null && <CheckCircle2 className="h-4 w-4 text-white" />}
+                            {task.completed && <CheckCircle2 className="h-4 w-4 text-white" />}
                           </button>
                           <div className="flex-1">
-                            <p className={`font-medium dark:text-white ${task.completed_at !== null ? 'line-through opacity-50' : ''}`}>
+                            <p className={`font-medium dark:text-white ${task.completed ? 'line-through opacity-50' : ''}`}>
                               {task.title}
                             </p>
                             {task.description && (
@@ -996,11 +974,11 @@ const toggleTaskComplete = async (taskId) => {
                     </span>
                   )}
                   <span className={`px-3 py-1 rounded-full text-sm ${
-                    selectedTask.completed_at !== null
+                    selectedTask.completed
                       ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400'
                       : 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400'
                   }`}>
-                    {selectedTask.completed_at !== null ? 'Erledigt' : 'Offen'}
+                    {selectedTask.completed ? 'Erledigt' : 'Offen'}
                   </span>
                 </div>
 
@@ -1038,12 +1016,12 @@ const toggleTaskComplete = async (taskId) => {
                   <button
                     onClick={() => toggleTaskComplete(selectedTask.id)}
                     className={`flex-1 py-2 rounded-lg font-medium transition-colors ${
-                      selectedTask.completed_at !== null
+                      selectedTask.completed
                         ? 'bg-amber-600 text-white hover:bg-amber-700'
                         : 'bg-green-600 text-white hover:bg-green-700'
                     }`}
                   >
-                    {selectedTask.completed_at !== null ? 'Wieder öffnen' : 'Als erledigt markieren'}
+                    {selectedTask.completed ? 'Wieder öffnen' : 'Als erledigt markieren'}
                   </button>
                   <button
                     onClick={() => { console.log("Edit clicked"); setEditingTask(selectedTask); }}

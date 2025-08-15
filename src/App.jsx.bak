@@ -295,7 +295,7 @@ function App() {
   };
 
   // ✅ FIX: Toggle Task Completion mit automatischem Progress-Update
-const toggleTaskComplete = async (taskId) => {
+  const toggleTaskComplete = async (taskId) => {
     console.log("🔥 DEBUG: toggleTaskComplete called with taskId:", taskId);
     const task = tasks.find(t => t.id === taskId);
     if (!task) {
@@ -303,23 +303,23 @@ const toggleTaskComplete = async (taskId) => {
       return;
     }
     console.log("✅ DEBUG: Found task:", task);
-    
-    // 🎯 LÖSUNG: Verwende status statt completed_at direkt!
-    // Der Datenbank-Trigger kümmert sich um completed_at und progress
-    const isCurrentlyCompleted = task.completed_at !== null || task.status === "completed";
-    const newStatus = isCurrentlyCompleted ? "open" : "completed";
-    const newProgress = isCurrentlyCompleted ? (task.progress || 0) : 100;
+    // 🧹 CRITICAL: Lösche completed Feld um Schema-Konflikt zu vermeiden!
+    delete task.completed;
 
-    console.log("📞 DEBUG: Calling tasksService.updateTask with:", { status: newStatus, progress: newProgress });
+    const isCurrentlyCompleted = task.completed_at !== null;
+    const newCompletedAt = isCurrentlyCompleted ? null : new Date().toISOString();
+    const newProgress = !isCurrentlyCompleted ? 100 : (task.progress || 0);
+
+    console.log("📞 DEBUG: Calling tasksService.updateTask with:", { taskId, progress });
     const result = await tasksService.updateTask(taskId, {
-      status: newStatus,
+      completed_at: newCompletedAt,
       progress: newProgress
     });
 
     console.log("📝 DEBUG: Service result:", result);
     if (result.success) {
       // ✅ Sofort lokalen State aktualisieren
-      const updatedTask = { ...task, status: newStatus, progress: newProgress, completed_at: newStatus === "completed" ? new Date().toISOString() : null };
+      const updatedTask = { ...task, completed_at: newCompletedAt, progress: newProgress };
       
       // Tasks Array aktualisieren
       setTasks(prev => prev.map(t => t.id === taskId ? updatedTask : t));
@@ -329,7 +329,7 @@ const toggleTaskComplete = async (taskId) => {
         setSelectedTask(updatedTask);
       }
       
-      setStatus(newStatus === 'completed' ? 'Aufgabe erledigt!' : 'Aufgabe wieder geöffnet');
+      setStatus(!isCurrentlyCompleted ? 'Aufgabe erledigt!' : 'Aufgabe wieder geöffnet');
       
       // Background reload für Konsistenz
       loadTasks();
