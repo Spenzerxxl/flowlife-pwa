@@ -9,7 +9,15 @@ import {
 } from 'lucide-react';
 import CalendarView from './CalendarView';
 import AuthComponent from './AuthComponent';
-import { authService, tasksService } from './supabaseService';
+import { 
+  authService, 
+  tasksService,
+  getSubtasksByTaskId,
+  createSubtask,
+  updateSubtask,
+  deleteSubtask,
+  toggleSubtask
+} from './supabaseService';
 
 function App() {
   // Authentication State
@@ -81,6 +89,7 @@ function App() {
       if (session?.user) {
         setUser(session.user);
         loadTasks();
+        loadSubtaskCounts();
       } else {
         setUser(null);
         setTasks([]);
@@ -143,7 +152,11 @@ function App() {
         // ✅ FIX: selectedTask schließen wenn gelöscht
         if (selectedTask && selectedTask.id === payload.old.id) {
           setSelectedTask(null);
-          setShowTaskModal(false);
+      setShowTaskModal(false);
+      setSubtasks([]);
+      setNewSubtaskTitle('');
+      setShowSubtaskInput(false);
+      setEditingSubtask(null);
         }
       }
       setLastSync(new Date());
@@ -383,8 +396,103 @@ const toggleTaskComplete = async (taskId) => {
     if (result.success) {
       setSelectedTask(null);
       setShowTaskModal(false);
+      setSubtasks([]);
+      setNewSubtaskTitle('');
+      setShowSubtaskInput(false);
+      setEditingSubtask(null);
       await loadTasks();
       setStatus('Aufgabe gelöscht');
+    }
+  };
+
+  // ===== SUBTASKS MANAGEMENT =====
+  const loadSubtasks = async (taskId) => {
+    try {
+      const data = await getSubtasksByTaskId(taskId);
+      setSubtasks(data || []);
+    } catch (error) {
+      console.error('Fehler beim Laden der Unteraufgaben:', error);
+      setSubtasks([]);
+    }
+  };
+
+  const loadSubtaskCounts = async () => {
+    try {
+      const counts = {};
+      for (const task of tasks) {
+        const subs = await getSubtasksByTaskId(task.id);
+        counts[task.id] = {
+          total: subs.length,
+          completed: subs.filter(s => s.completed).length
+        };
+      }
+      setTaskSubtaskCounts(counts);
+    } catch (error) {
+      console.error('Fehler beim Laden der Subtask-Counts:', error);
+    }
+  };
+
+  const handleAddSubtask = async () => {
+    if (!newSubtaskTitle.trim() || !selectedTask) return;
+    
+    try {
+      const newSubtask = await createSubtask({
+        task_id: selectedTask.id,
+        title: newSubtaskTitle.trim(),
+        position: subtasks.length
+      });
+      
+      setSubtasks([...subtasks, newSubtask]);
+      setNewSubtaskTitle('');
+      setShowSubtaskInput(false);
+      await loadSubtaskCounts();
+    } catch (error) {
+      console.error('Fehler beim Erstellen der Unteraufgabe:', error);
+    }
+  };
+
+  const handleToggleSubtask = async (subtaskId, currentStatus) => {
+    try {
+      const updatedSubtask = await toggleSubtask(subtaskId, !currentStatus);
+      setSubtasks(subtasks.map(st => 
+        st.id === subtaskId ? updatedSubtask : st
+      ));
+      await loadSubtaskCounts();
+    } catch (error) {
+      console.error('Fehler beim Aktualisieren der Unteraufgabe:', error);
+    }
+  };
+
+  const handleUpdateSubtaskDate = async (subtaskId, dueDate) => {
+    try {
+      const updatedSubtask = await updateSubtask(subtaskId, { due_date: dueDate });
+      setSubtasks(subtasks.map(st => 
+        st.id === subtaskId ? updatedSubtask : st
+      ));
+    } catch (error) {
+      console.error('Fehler beim Aktualisieren des Datums:', error);
+    }
+  };
+
+  const handleDeleteSubtask = async (subtaskId) => {
+    try {
+      await deleteSubtask(subtaskId);
+      setSubtasks(subtasks.filter(st => st.id !== subtaskId));
+      await loadSubtaskCounts();
+    } catch (error) {
+      console.error('Fehler beim Löschen der Unteraufgabe:', error);
+    }
+  };
+
+  const handleEditSubtask = async (subtaskId, newTitle) => {
+    try {
+      const updatedSubtask = await updateSubtask(subtaskId, { title: newTitle });
+      setSubtasks(subtasks.map(st => 
+        st.id === subtaskId ? updatedSubtask : st
+      ));
+      setEditingSubtask(null);
+    } catch (error) {
+      console.error('Fehler beim Bearbeiten der Unteraufgabe:', error);
     }
   };
 
@@ -668,6 +776,7 @@ const toggleTaskComplete = async (taskId) => {
                       onClick={() => {
                         setSelectedTask(task);
                         setShowTaskModal(true);
+                        loadSubtasks(task.id);
                       }}
                       className="flex items-center justify-between p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer transition-colors"
                     >
@@ -741,6 +850,7 @@ const toggleTaskComplete = async (taskId) => {
                       onClick={() => {
                         setSelectedTask(task);
                         setShowTaskModal(true);
+                        loadSubtasks(task.id);
                       }}
                       className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm hover:shadow-md transition-shadow cursor-pointer"
                     >
