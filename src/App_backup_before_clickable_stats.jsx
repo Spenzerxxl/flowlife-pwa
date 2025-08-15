@@ -615,7 +615,7 @@ const toggleTaskComplete = async (taskId) => {
 
               {/* Stats */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                <div onClick={() => setSelectedCategory('offen')} className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm cursor-pointer hover:shadow-lg hover:scale-105 transition-all duration-200">
+                <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm">
                   <div className="text-3xl font-bold text-blue-600 dark:text-blue-400">
                     {tasks.filter(t => t.completed_at === null).length}
                   </div>
