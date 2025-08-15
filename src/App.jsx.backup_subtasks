@@ -35,11 +35,6 @@ function App() {
   const [selectedCategory, setSelectedCategory] = useState('alle');
   const [showTaskInput, setShowTaskInput] = useState(false);
   const [showVoiceInput, setShowVoiceInput] = useState(false);
-  const [subtasks, setSubtasks] = useState([]);
-  const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
-  const [showSubtaskInput, setShowSubtaskInput] = useState(false);
-  const [editingSubtask, setEditingSubtask] = useState(null);
-  const [taskSubtaskCounts, setTaskSubtaskCounts] = useState({});
   const [manualTaskText, setManualTaskText] = useState('');
   const [selectedDeadline, setSelectedDeadline] = useState('');
   const [selectedTaskCategory, setSelectedTaskCategory] = useState('Allgemein');

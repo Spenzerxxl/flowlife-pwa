@@ -293,3 +293,64 @@ export default {
   authService,
   tasksService
 };
+
+// ===== SUBTASKS CRUD OPERATIONS =====
+// Alle Subtasks einer Aufgabe abrufen
+export const getSubtasksByTaskId = async (taskId) => {
+  const { data, error } = await supabase
+    .from('subtasks')
+    .select('*')
+    .eq('task_id', taskId)
+    .order('position', { ascending: true });
+
+  if (error) throw error;
+  return data;
+};
+
+// Neue Subtask erstellen
+export const createSubtask = async (subtaskData) => {
+  const { data, error } = await supabase
+    .from('subtasks')
+    .insert([subtaskData])
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+};
+
+// Subtask aktualisieren
+export const updateSubtask = async (subtaskId, updates) => {
+  const { data, error } = await supabase
+    .from('subtasks')
+    .update(updates)
+    .eq('id', subtaskId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+};
+
+// Subtask löschen
+export const deleteSubtask = async (subtaskId) => {
+  const { error } = await supabase
+    .from('subtasks')
+    .delete()
+    .eq('id', subtaskId);
+
+  if (error) throw error;
+};
+
+// Subtask-Status togglen
+export const toggleSubtask = async (subtaskId, completed) => {
+  const { data, error } = await supabase
+    .from('subtasks')
+    .update({ completed })
+    .eq('id', subtaskId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+};
