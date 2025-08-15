@@ -689,6 +689,14 @@ const toggleTaskComplete = async (taskId) => {
                           <p className={`font-medium dark:text-white ${task.completed_at !== null ? 'line-through opacity-50' : ''}`}>
                             {task.title}
                           </p>
+                          {taskSubtaskCounts[task.id] && taskSubtaskCounts[task.id].total > 0 && (
+                            <div className="flex items-center gap-2 mt-2">
+                              <CheckSquare size={14} className="text-gray-500" />
+                              <span className="text-sm text-gray-600 dark:text-gray-400">
+                                {taskSubtaskCounts[task.id].completed}/{taskSubtaskCounts[task.id].total} Unteraufgaben
+                              </span>
+                            </div>
+                          )}
                           <p className="text-sm text-gray-500 dark:text-gray-400">
                             {categories.find(c => c.id === task.category)?.label || task.category}
                           </p>
@@ -755,6 +763,14 @@ const toggleTaskComplete = async (taskId) => {
                             <p className={`font-medium dark:text-white ${task.completed_at !== null ? 'line-through opacity-50' : ''}`}>
                               {task.title}
                             </p>
+                          {taskSubtaskCounts[task.id] && taskSubtaskCounts[task.id].total > 0 && (
+                            <div className="flex items-center gap-2 mt-2">
+                              <CheckSquare size={14} className="text-gray-500" />
+                              <span className="text-sm text-gray-600 dark:text-gray-400">
+                                {taskSubtaskCounts[task.id].completed}/{taskSubtaskCounts[task.id].total} Unteraufgaben
+                              </span>
+                            </div>
+                          )}
                             {task.description && (
                               <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
                                 {task.description}
@@ -1001,6 +1017,107 @@ const toggleTaskComplete = async (taskId) => {
                   {selectedTask.description && (
                     <p className="text-gray-600 dark:text-gray-400 mt-2">{selectedTask.description}</p>
                   )}
+                </div>
+
+                {/* Unteraufgaben Section */}
+                <div className="mb-4 mt-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="font-medium text-gray-700 dark:text-gray-300">
+                      Unteraufgaben ({subtasks.filter(st => st.completed).length}/{subtasks.length})
+                    </h4>
+                    <button
+                      onClick={() => setShowSubtaskInput(true)}
+                      className="text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300"
+                    >
+                      <Plus size={20} />
+                    </button>
+                  </div>
+
+                  {showSubtaskInput && (
+                    <div className="flex gap-2 mb-3">
+                      <input
+                        type="text"
+                        value={newSubtaskTitle}
+                        onChange={(e) => setNewSubtaskTitle(e.target.value)}
+                        onKeyPress={(e) => e.key === 'Enter' && handleAddSubtask()}
+                        placeholder="Neue Unteraufgabe..."
+                        className="flex-1 px-3 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                        autoFocus
+                      />
+                      <button
+                        onClick={handleAddSubtask}
+                        className="px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+                      >
+                        <Check size={16} />
+                      </button>
+                      <button
+                        onClick={() => {
+                          setShowSubtaskInput(false);
+                          setNewSubtaskTitle('');
+                        }}
+                        className="px-3 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {subtasks.map((subtask) => (
+                      <div key={subtask.id} className="flex items-center gap-2 p-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                        <input
+                          type="checkbox"
+                          checked={subtask.completed}
+                          onChange={() => handleToggleSubtask(subtask.id, subtask.completed)}
+                          className="w-5 h-5 text-blue-500 rounded focus:ring-blue-500"
+                        />
+                        
+                        {editingSubtask === subtask.id ? (
+                          <input
+                            type="text"
+                            defaultValue={subtask.title}
+                            onKeyPress={(e) => {
+                              if (e.key === 'Enter') {
+                                handleEditSubtask(subtask.id, e.target.value);
+                              }
+                            }}
+                            onBlur={(e) => handleEditSubtask(subtask.id, e.target.value)}
+                            className="flex-1 px-2 py-1 border rounded dark:bg-gray-600 dark:border-gray-500 dark:text-white"
+                            autoFocus
+                          />
+                        ) : (
+                          <span 
+                            className={\`flex-1 cursor-pointer \${subtask.completed ? 'line-through text-gray-500' : 'text-gray-700 dark:text-gray-200'}\`}
+                            onClick={() => setEditingSubtask(subtask.id)}
+                          >
+                            {subtask.title}
+                          </span>
+                        )}
+                        
+                        <input
+                          type="date"
+                          value={subtask.due_date || ''}
+                          onChange={(e) => handleUpdateSubtaskDate(subtask.id, e.target.value || null)}
+                          className="px-2 py-1 text-sm border rounded dark:bg-gray-600 dark:border-gray-500 dark:text-white"
+                          title="Fälligkeitsdatum"
+                        />
+                        
+                        <button
+                          onClick={() => handleDeleteSubtask(subtask.id)}
+                          className="text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300"
+                          title="Löschen"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    ))}
+                    
+                    {subtasks.length === 0 && !showSubtaskInput && (
+                      <p className="text-gray-500 dark:text-gray-400 text-center py-4">
+                        Noch keine Unteraufgaben vorhanden
+                      </p>
+                    )}
+                  </div>
                 </div>
 
                 <div className="flex flex-wrap gap-2">
