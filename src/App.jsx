@@ -1197,7 +1197,7 @@ const toggleTaskComplete = async (taskId) => {
                           />
                         ) : (
                           <span 
-                            className={\`flex-1 cursor-pointer \${subtask.completed ? 'line-through text-gray-500' : 'text-gray-700 dark:text-gray-200'}\`}
+                              className={"flex-1 cursor-pointer " + (subtask.completed ? 'line-through text-gray-500' : 'text-gray-700 dark:text-gray-200')}
                             onClick={() => setEditingSubtask(subtask.id)}
                           >
                             {subtask.title}
