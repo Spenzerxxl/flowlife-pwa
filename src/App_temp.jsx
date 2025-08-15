@@ -615,37 +615,25 @@ const toggleTaskComplete = async (taskId) => {
 
               {/* Stats */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                <div 
-                  onClick={() => setSelectedCategory('offen')} 
-                  className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm cursor-pointer hover:shadow-lg hover:scale-105 transition-all duration-200"
-                >
+                <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm">
                   <div className="text-3xl font-bold text-blue-600 dark:text-blue-400">
                     {tasks.filter(t => t.completed_at === null).length}
                   </div>
                   <div className="text-sm text-gray-600 dark:text-gray-400">Offene Aufgaben</div>
                 </div>
-                <div 
-                  onClick={() => setSelectedCategory('erledigt')} 
-                  className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm cursor-pointer hover:shadow-lg hover:scale-105 transition-all duration-200"
-                >
+                <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm">
                   <div className="text-3xl font-bold text-green-600 dark:text-green-400">
                     {tasks.filter(t => t.completed_at !== null).length}
                   </div>
                   <div className="text-sm text-gray-600 dark:text-gray-400">Erledigt</div>
                 </div>
-                <div 
-                  onClick={() => setSelectedCategory('alle')} 
-                  className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm cursor-pointer hover:shadow-lg hover:scale-105 transition-all duration-200"
-                >
+                <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm">
                   <div className="text-3xl font-bold text-purple-600 dark:text-purple-400">
                     {tasks.length}
                   </div>
                   <div className="text-sm text-gray-600 dark:text-gray-400">Gesamt</div>
                 </div>
-                <div 
-                  onClick={() => setSelectedCategory('alle')} 
-                  className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm cursor-pointer hover:shadow-lg hover:scale-105 transition-all duration-200"
-                >
+                <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm">
                   <div className="text-3xl font-bold text-amber-600 dark:text-amber-400">
                     {tasks.filter(t => t.deadline && new Date(t.deadline) <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)).length}
                   </div>
