@@ -1,11 +1,11 @@
-// App.jsx - FlowLife mit Supabase Integration - PROGRESS & STATUS FIX
+// App.jsx - FlowLife mit Supabase Integration
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   Mic, MicOff, Send, Loader2, Trash2, Plus, CheckCircle2, 
   Clock, Tag, AlertCircle, Mail, Phone, Calendar, 
   ChevronDown, ChevronUp, Sparkles, Target, X, Sun, Moon,
   Pencil, Save, FileText, CalendarDays, Menu, Home, ListTodo,
-  ChevronRight, LogOut, RefreshCw, Archive
+  ChevronRight, LogOut, RefreshCw
 } from 'lucide-react';
 import CalendarView from './CalendarView';
 import AuthComponent from './AuthComponent';
@@ -129,17 +129,8 @@ function App() {
         setTasks(prev => prev.map(task => 
           task.id === payload.new.id ? payload.new : task
         ));
-        // ✅ FIX: Auch selectedTask aktualisieren bei Real-time Updates
-        if (selectedTask && selectedTask.id === payload.new.id) {
-          setSelectedTask(payload.new);
-        }
       } else if (payload.eventType === 'DELETE') {
         setTasks(prev => prev.filter(task => task.id !== payload.old.id));
-        // ✅ FIX: selectedTask schließen wenn gelöscht
-        if (selectedTask && selectedTask.id === payload.old.id) {
-          setSelectedTask(null);
-          setShowTaskModal(false);
-        }
       }
       setLastSync(new Date());
     });
@@ -292,61 +283,27 @@ function App() {
     }
   };
 
-  // ✅ FIX: Toggle Task Completion mit automatischem Progress-Update
+  // Toggle Task Completion
   const toggleTaskComplete = async (taskId) => {
     const task = tasks.find(t => t.id === taskId);
     if (!task) return;
 
-    const newCompleted = !task.completed;
-    const newProgress = newCompleted ? 100 : (task.progress || 0);
-
     const result = await tasksService.updateTask(taskId, {
-      completed: newCompleted,
-      progress: newProgress
+      completed: !task.completed
     });
 
     if (result.success) {
-      // ✅ Sofort lokalen State aktualisieren
-      const updatedTask = { ...task, completed: newCompleted, progress: newProgress };
-      
-      // Tasks Array aktualisieren
-      setTasks(prev => prev.map(t => t.id === taskId ? updatedTask : t));
-      
-      // ✅ FIX: Auch selectedTask sofort aktualisieren!
-      if (selectedTask && selectedTask.id === taskId) {
-        setSelectedTask(updatedTask);
-      }
-      
-      setStatus(newCompleted ? 'Aufgabe erledigt!' : 'Aufgabe wieder geöffnet');
-      
-      // Background reload für Konsistenz
-      loadTasks();
+      await loadTasks();
+      setStatus(task.completed ? 'Aufgabe wieder geöffnet' : 'Aufgabe erledigt!');
     }
   };
 
-  // ✅ FIX: Update Task Progress mit sofortiger UI-Aktualisierung
+  // Update Task Progress
   const updateTaskProgress = async (taskId, progress) => {
-    const task = tasks.find(t => t.id === taskId);
-    if (!task) return;
-
     const result = await tasksService.updateTask(taskId, { progress });
     
     if (result.success) {
-      // ✅ Sofort lokalen State aktualisieren
-      const updatedTask = { ...task, progress };
-      
-      // Tasks Array aktualisieren
-      setTasks(prev => prev.map(t => t.id === taskId ? updatedTask : t));
-      
-      // ✅ FIX: Auch selectedTask sofort aktualisieren!
-      if (selectedTask && selectedTask.id === taskId) {
-        setSelectedTask(updatedTask);
-      }
-      
-      setStatus(`Fortschritt auf ${progress}% aktualisiert`);
-      
-      // Background reload für Konsistenz
-      loadTasks();
+      await loadTasks();
     }
   };
 
@@ -381,13 +338,10 @@ function App() {
     }
   };
 
-  // ✅ FIX: Erweiterte Filter für Erledigt-Kategorie
-  const filteredTasks = () => {
-    if (selectedCategory === 'alle') return tasks;
-    if (selectedCategory === 'erledigt') return tasks.filter(task => task.completed);
-    if (selectedCategory === 'offen') return tasks.filter(task => !task.completed);
-    return tasks.filter(task => task.category === selectedCategory);
-  };
+  // Filter tasks by category
+  const filteredTasks = selectedCategory === 'alle' 
+    ? tasks 
+    : tasks.filter(task => task.category === selectedCategory);
 
   // Show loading screen while checking authentication
   if (loadingAuth) {
@@ -503,10 +457,10 @@ function App() {
                 <span className="font-medium">Kalender</span>
               </button>
 
-              {/* ✅ FIX: Erweiterte Kategorien */}
+              {/* Categories */}
               <div className="mt-8">
                 <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
-                  Ansichten
+                  Kategorien
                 </h3>
                 <button
                   onClick={() => { setSelectedCategory('alle'); if (isMobile) setShowSidebar(false); }}
@@ -518,33 +472,6 @@ function App() {
                 >
                   <span className="dark:text-gray-300">📊 Alle Aufgaben</span>
                 </button>
-                <button
-                  onClick={() => { setSelectedCategory('offen'); if (isMobile) setShowSidebar(false); }}
-                  className={`w-full text-left px-4 py-2 rounded-lg transition-colors ${
-                    selectedCategory === 'offen'
-                      ? 'bg-gray-100 dark:bg-gray-700'
-                      : 'hover:bg-gray-50 dark:hover:bg-gray-700'
-                  }`}
-                >
-                  <span className="dark:text-gray-300">⏳ Offene Aufgaben</span>
-                </button>
-                <button
-                  onClick={() => { setSelectedCategory('erledigt'); if (isMobile) setShowSidebar(false); }}
-                  className={`w-full text-left px-4 py-2 rounded-lg transition-colors ${
-                    selectedCategory === 'erledigt'
-                      ? 'bg-gray-100 dark:bg-gray-700'
-                      : 'hover:bg-gray-50 dark:hover:bg-gray-700'
-                  }`}
-                >
-                  <span className="dark:text-gray-300">✅ Erledigte Aufgaben</span>
-                </button>
-              </div>
-
-              {/* Categories */}
-              <div className="mt-6">
-                <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
-                  Kategorien
-                </h3>
                 {categories.map(cat => (
                   <button
                     key={cat.id}
@@ -623,7 +550,7 @@ function App() {
               <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
                 <h3 className="text-lg font-semibold mb-4 dark:text-white">Aktuelle Aufgaben</h3>
                 <div className="space-y-2">
-                  {filteredTasks().slice(0, 5).map(task => (
+                  {filteredTasks.slice(0, 5).map(task => (
                     <div
                       key={task.id}
                       onClick={() => {
@@ -682,13 +609,13 @@ function App() {
               </div>
 
               <div className="space-y-2">
-                {filteredTasks().length === 0 ? (
+                {filteredTasks.length === 0 ? (
                   <div className="text-center py-12 text-gray-500 dark:text-gray-400">
                     <ListTodo className="h-12 w-12 mx-auto mb-4 opacity-50" />
                     <p>Keine Aufgaben vorhanden</p>
                   </div>
                 ) : (
-                  filteredTasks().map(task => (
+                  filteredTasks.map(task => (
                     <div
                       key={task.id}
                       onClick={() => {
@@ -731,10 +658,6 @@ function App() {
                                   {new Date(task.deadline).toLocaleDateString('de-DE')}
                                 </span>
                               )}
-                              {/* ✅ FIX: Progress-Anzeige in Task-Liste */}
-                              <span className="text-xs text-gray-500 dark:text-gray-400">
-                                {task.progress || 0}% erledigt
-                              </span>
                             </div>
                           </div>
                         </div>
@@ -982,16 +905,16 @@ function App() {
                   </span>
                 </div>
 
-                {/* ✅ FIX: Progress mit sofortiger UI-Reaktion */}
+                {/* Progress */}
                 <div>
                   <div className="flex justify-between items-center mb-2">
                     <span className="text-sm font-medium dark:text-gray-300">Fortschritt</span>
-                    <span className="text-sm text-gray-600 dark:text-gray-400">{selectedTask.progress || 0}%</span>
+                    <span className="text-sm text-gray-600 dark:text-gray-400">{selectedTask.progress}%</span>
                   </div>
                   <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
                     <div
                       className="bg-gradient-to-r from-blue-500 to-purple-600 h-2 rounded-full transition-all"
-                      style={{ width: `${selectedTask.progress || 0}%` }}
+                      style={{ width: `${selectedTask.progress}%` }}
                     />
                   </div>
                   <div className="flex gap-2 mt-3">
@@ -999,8 +922,8 @@ function App() {
                       <button
                         key={value}
                         onClick={() => updateTaskProgress(selectedTask.id, value)}
-                        className={`flex-1 py-1 rounded text-sm transition-colors ${
-                          (selectedTask.progress || 0) === value
+                        className={`flex-1 py-1 rounded text-sm ${
+                          selectedTask.progress === value
                             ? 'bg-blue-600 text-white'
                             : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
                         }`}
@@ -1011,11 +934,11 @@ function App() {
                   </div>
                 </div>
 
-                {/* ✅ FIX: Actions mit sofortiger UI-Reaktion */}
+                {/* Actions */}
                 <div className="flex gap-2 pt-4 border-t dark:border-gray-700">
                   <button
                     onClick={() => toggleTaskComplete(selectedTask.id)}
-                    className={`flex-1 py-2 rounded-lg font-medium transition-colors ${
+                    className={`flex-1 py-2 rounded-lg font-medium ${
                       selectedTask.completed
                         ? 'bg-amber-600 text-white hover:bg-amber-700'
                         : 'bg-green-600 text-white hover:bg-green-700'
@@ -1039,13 +962,6 @@ function App() {
               </div>
             )}
           </div>
-        </div>
-      )}
-
-      {/* ✅ FIX: Status-Nachricht für besseres Feedback */}
-      {status && (
-        <div className="fixed bottom-4 right-4 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg z-50">
-          {status}
         </div>
       )}
     </div>
