@@ -771,7 +771,7 @@ const toggleTaskComplete = async (taskId) => {
               <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
                 <h3 className="text-lg font-semibold mb-4 dark:text-white">Aktuelle Aufgaben</h3>
                 <div className="space-y-2 overflow-y-auto" style={{maxHeight: 'calc(50vh)'}}>
-                  {filteredTasks().slice(0, 5).map(task => (
+                  {filteredTasks().map(task => (
                     <div
                       key={task.id}
                       onClick={() => {
