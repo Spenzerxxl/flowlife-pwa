@@ -331,7 +331,8 @@ const toggleTaskComplete = async (taskId) => {
     console.log("📞 DEBUG: Calling tasksService.updateTask with:", { status: newStatus, progress: newProgress });
     const result = await tasksService.updateTask(taskId, {
       status: newStatus,
-      progress: newProgress
+      progress: newProgress,
+      completed_at: newStatus === "completed" ? new Date().toISOString() : null
     });
 
     console.log("📝 DEBUG: Service result:", result);
