@@ -770,7 +770,7 @@ const toggleTaskComplete = async (taskId) => {
               {/* Recent Tasks */}
               <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
                 <h3 className="text-lg font-semibold mb-4 dark:text-white">Aktuelle Aufgaben</h3>
-                <div className="space-y-2">
+                <div className="space-y-2 overflow-y-auto" style={{maxHeight: 'calc(50vh)'}}>
                   {filteredTasks().slice(0, 5).map(task => (
                     <div
                       key={task.id}
@@ -838,7 +838,7 @@ const toggleTaskComplete = async (taskId) => {
                 </button>
               </div>
 
-              <div className="space-y-2">
+              <div className="space-y-2 overflow-y-auto" style={{maxHeight: 'calc(100vh - 200px)'}}>
                 {filteredTasks().length === 0 ? (
                   <div className="text-center py-12 text-gray-500 dark:text-gray-400">
                     <ListTodo className="h-12 w-12 mx-auto mb-4 opacity-50" />
